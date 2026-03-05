@@ -32,26 +32,34 @@ interface Spark {
   hue: "cool" | "warm";
 }
 
+function statusTone(status: "ready" | "rolling" | "win" | "loss"): string {
+  if (status === "win") {
+    return "arena-pill-win";
+  }
+  if (status === "loss") {
+    return "arena-pill-loss";
+  }
+  if (status === "rolling") {
+    return "arena-pill-live";
+  }
+  return "arena-pill-neutral";
+}
+
 export function DiceArena({ rolling, rollValue, threshold, direction, outcome }: DiceArenaProps) {
   useExtend({ Container, Graphics, Text });
 
   const thresholdClamped = clamp(Math.floor(threshold), 2, 98);
   const effectiveRoll = rollValue !== null ? clampInt(rollValue, 0, 99) : null;
+  const status: "ready" | "rolling" | "win" | "loss" = rolling
+    ? "rolling"
+    : outcome === "win"
+      ? "win"
+      : outcome === "loss"
+        ? "loss"
+        : "ready";
 
   return (
-    <div className="dice-arena-shell">
-      <div className="dice-arena-overlay">
-        <span>
-          {direction.toUpperCase()} {thresholdClamped}
-        </span>
-        <span>ROLL {effectiveRoll !== null ? effectiveRoll : "--"}</span>
-      </div>
-      <div className="dice-arena-overlay dice-arena-bottom">
-        <span>
-          Target {direction === "over" ? ">" : "<"} {thresholdClamped}
-        </span>
-        <span>{rolling ? "Rolling..." : outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Ready"}</span>
-      </div>
+    <div className="dice-arena-shell arena-shell">
       <div className="dice-arena-canvas">
         <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
           <DiceArenaScene
@@ -62,6 +70,15 @@ export function DiceArena({ rolling, rollValue, threshold, direction, outcome }:
             outcome={outcome}
           />
         </Application>
+      </div>
+      <div className="arena-hud arena-hud-dice">
+        <span className="arena-pill arena-pill-info">
+          {direction.toUpperCase()} {thresholdClamped}
+        </span>
+        <span className="arena-pill arena-pill-neutral">
+          {effectiveRoll !== null ? `ROLL ${effectiveRoll}` : "ROLL --"}
+        </span>
+        <span className={`arena-pill ${statusTone(status)}`}>{status.toUpperCase()}</span>
       </div>
     </div>
   );
@@ -87,11 +104,11 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
 
   const sparks = useMemo<Spark[]>(
     () =>
-      Array.from({ length: 18 }, (_, index) => ({
-        x: 30 + ((index * 17) % (STAGE_WIDTH - 60)),
-        y: 24 + ((index * 31) % (STAGE_HEIGHT - 72)),
-        size: 1.5 + (index % 3),
-        seed: index * 0.73,
+      Array.from({ length: 20 }, (_, index) => ({
+        x: 24 + ((index * 17) % (STAGE_WIDTH - 48)),
+        y: 16 + ((index * 29) % (STAGE_HEIGHT - 48)),
+        size: 1.4 + (index % 3),
+        seed: index * 0.71,
         hue: index % 2 === 0 ? "cool" : "warm",
       })),
     [],
@@ -108,7 +125,7 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
     }
     frameAccumulator.current = 0;
 
-    if (rolling && rollAccumulator.current >= 64) {
+    if (rolling && rollAccumulator.current >= 60) {
       rollAccumulator.current = 0;
       setRollingNumber(Math.floor(Math.random() * 100));
     }
@@ -117,13 +134,13 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
     if (rolling) {
       setTilt(Math.sin(time * 17) * 0.28);
       setScale(1 + Math.sin(time * 24) * 0.06);
-      setSparkPhase((previous) => (previous + 0.7) % 1000);
+      setSparkPhase((previous) => (previous + 0.85) % 1000);
       return;
     }
 
     setTilt((previous) => previous * 0.76);
     setScale((previous) => previous + (1 - previous) * 0.26);
-    setSparkPhase((previous) => (previous + 0.18) % 1000);
+    setSparkPhase((previous) => (previous + 0.2) % 1000);
   });
 
   const effectiveRoll = clampInt(rolling ? rollingNumber : (rollValue ?? rollingNumber), 0, 99);
@@ -135,14 +152,33 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
 
   const drawBackdrop = useCallback((graphics: Graphics) => {
     graphics.clear();
-    graphics.setFillStyle({ color: 0x05101d, alpha: 0.92 });
+    graphics.setFillStyle({ color: 0x05101d, alpha: 0.95 });
     graphics.roundRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT, 16);
     graphics.fill();
 
-    graphics.setStrokeStyle({ color: 0x334155, width: 1.5, alpha: 0.55 });
-    graphics.roundRect(1, 1, STAGE_WIDTH - 2, STAGE_HEIGHT - 2, 15);
-    graphics.stroke();
+    graphics.setFillStyle({ color: 0x0e2238, alpha: 0.34 });
+    graphics.circle(70, 48, 86);
+    graphics.fill();
+
+    graphics.setFillStyle({ color: 0x21103e, alpha: 0.3 });
+    graphics.circle(STAGE_WIDTH - 54, 44, 92);
+    graphics.fill();
   }, []);
+
+  const drawPulse = useCallback(
+    (graphics: Graphics) => {
+      graphics.clear();
+      const pulseRadius = 74 + Math.sin(sparkPhase * 0.08) * 8;
+      graphics.setStrokeStyle({
+        color: accent,
+        width: 2.6,
+        alpha: rolling ? 0.48 : 0.24,
+      });
+      graphics.circle(STAGE_WIDTH / 2, 88, pulseRadius);
+      graphics.stroke();
+    },
+    [accent, rolling, sparkPhase],
+  );
 
   const drawSparkles = useCallback(
     (graphics: Graphics) => {
@@ -150,11 +186,11 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
       for (const spark of sparks) {
         const wobble = Math.sin(spark.seed + sparkPhase * 0.08);
         const float = Math.cos(spark.seed * 1.4 + sparkPhase * 0.06);
-        const alpha = (rolling ? 0.18 : 0.09) + Math.abs(wobble) * (rolling ? 0.32 : 0.14);
+        const alpha = (rolling ? 0.2 : 0.1) + Math.abs(wobble) * (rolling ? 0.32 : 0.12);
         const color = spark.hue === "cool" ? 0x67e8f9 : 0xfcd34d;
 
         graphics.setFillStyle({ color, alpha });
-        graphics.circle(spark.x + wobble * 8, spark.y + float * 6, spark.size + Math.abs(float) * 1.8);
+        graphics.circle(spark.x + wobble * 9, spark.y + float * 6, spark.size + Math.abs(float) * 1.8);
         graphics.fill();
       }
     },
@@ -165,30 +201,30 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
     (graphics: Graphics) => {
       graphics.clear();
 
-      graphics.setFillStyle({ color: 0x0b1728, alpha: 0.95 });
-      graphics.roundRect(GAUGE_LEFT - 8, STAGE_HEIGHT - 56, GAUGE_WIDTH + 16, 28, 12);
+      graphics.setFillStyle({ color: 0x0b1728, alpha: 0.94 });
+      graphics.roundRect(GAUGE_LEFT - 10, STAGE_HEIGHT - 56, GAUGE_WIDTH + 20, 30, 13);
       graphics.fill();
 
       graphics.setStrokeStyle({ color: 0x334155, width: 1.2, alpha: 0.7 });
-      graphics.roundRect(GAUGE_LEFT - 8, STAGE_HEIGHT - 56, GAUGE_WIDTH + 16, 28, 12);
+      graphics.roundRect(GAUGE_LEFT - 10, STAGE_HEIGHT - 56, GAUGE_WIDTH + 20, 30, 13);
       graphics.stroke();
 
       graphics.setStrokeStyle({ color: 0x475569, width: 3, alpha: 0.65 });
-      graphics.moveTo(GAUGE_LEFT, STAGE_HEIGHT - 42);
-      graphics.lineTo(GAUGE_RIGHT, STAGE_HEIGHT - 42);
+      graphics.moveTo(GAUGE_LEFT, STAGE_HEIGHT - 41);
+      graphics.lineTo(GAUGE_RIGHT, STAGE_HEIGHT - 41);
       graphics.stroke();
 
       graphics.setStrokeStyle({ color: accent, width: 2.8, alpha: 0.95 });
       graphics.moveTo(thresholdX, STAGE_HEIGHT - 52);
-      graphics.lineTo(thresholdX, STAGE_HEIGHT - 32);
+      graphics.lineTo(thresholdX, STAGE_HEIGHT - 30);
       graphics.stroke();
 
-      graphics.setFillStyle({ color: 0xe2e8f0, alpha: 0.95 });
-      graphics.circle(rollX, STAGE_HEIGHT - 42, 5.5);
+      graphics.setFillStyle({ color: 0xe2e8f0, alpha: 0.98 });
+      graphics.circle(rollX, STAGE_HEIGHT - 41, 5.8);
       graphics.fill();
 
-      graphics.setStrokeStyle({ color: 0x0f172a, width: 1.4, alpha: 0.8 });
-      graphics.circle(rollX, STAGE_HEIGHT - 42, 5.5);
+      graphics.setStrokeStyle({ color: 0x0f172a, width: 1.2, alpha: 0.85 });
+      graphics.circle(rollX, STAGE_HEIGHT - 41, 5.8);
       graphics.stroke();
     },
     [accent, rollX, thresholdX],
@@ -197,8 +233,8 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
   const drawGlow = useCallback(
     (graphics: Graphics) => {
       graphics.clear();
-      graphics.setFillStyle({ color: accent, alpha: rolling ? 0.24 : 0.16 });
-      graphics.circle(0, 0, 74);
+      graphics.setFillStyle({ color: accent, alpha: rolling ? 0.28 : 0.16 });
+      graphics.circle(0, 0, 78);
       graphics.fill();
     },
     [accent, rolling],
@@ -212,7 +248,7 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
       graphics.roundRect(-52, -52, 104, 104, 19);
       graphics.fill();
 
-      graphics.setStrokeStyle({ color: accent, width: 4, alpha: 0.84 });
+      graphics.setStrokeStyle({ color: accent, width: 4, alpha: 0.88 });
       graphics.roundRect(-52, -52, 104, 104, 19);
       graphics.stroke();
     },
@@ -223,6 +259,7 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
     <>
       <pixiGraphics draw={drawBackdrop} />
       <pixiGraphics draw={drawSparkles} />
+      <pixiGraphics draw={drawPulse} />
       <pixiGraphics draw={drawGauge} />
       <pixiContainer x={STAGE_WIDTH / 2} y={88} rotation={tilt} scale={scale}>
         <pixiGraphics draw={drawGlow} />
@@ -240,18 +277,6 @@ function DiceArenaScene({ rolling, rollValue, threshold, direction, outcome }: D
           }}
         />
       </pixiContainer>
-      <pixiText
-        x={14}
-        y={12}
-        text="DICE ARENA"
-        style={{
-          fill: "#cbd5e1",
-          fontFamily: "IBM Plex Mono",
-          fontWeight: "600",
-          fontSize: 11,
-          letterSpacing: 2,
-        }}
-      />
     </>
   );
 }

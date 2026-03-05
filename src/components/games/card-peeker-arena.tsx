@@ -44,6 +44,19 @@ function suitColor(suit: (typeof SUITS)[number]): string {
   return suit === "♥" || suit === "♦" ? "#ef4444" : "#0f172a";
 }
 
+function statusTone(status: "ready" | "revealing" | "win" | "loss"): string {
+  if (status === "win") {
+    return "arena-pill-win";
+  }
+  if (status === "loss") {
+    return "arena-pill-loss";
+  }
+  if (status === "revealing") {
+    return "arena-pill-live";
+  }
+  return "arena-pill-neutral";
+}
+
 export function CardPeekerArena({
   currentCard,
   nextCard,
@@ -53,18 +66,16 @@ export function CardPeekerArena({
 }: CardPeekerArenaProps) {
   useExtend({ Container, Graphics, Text });
 
+  const status: "ready" | "revealing" | "win" | "loss" = revealing
+    ? "revealing"
+    : outcome === "win"
+      ? "win"
+      : outcome === "loss"
+        ? "loss"
+        : "ready";
+
   return (
-    <div className="card-peeker-shell">
-      <div className="card-peeker-overlay">
-        <span>CURRENT {currentCard ?? "--"}</span>
-        <span>NEXT {nextCard ?? "?"}</span>
-      </div>
-      <div className="card-peeker-overlay card-peeker-bottom">
-        <span>GUESS {guess ? guess.toUpperCase() : "--"}</span>
-        <span>
-          {revealing ? "Revealing..." : outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Ready"}
-        </span>
-      </div>
+    <div className="card-peeker-shell arena-shell">
       <div className="card-peeker-canvas">
         <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
           <CardPeekerScene
@@ -75,6 +86,12 @@ export function CardPeekerArena({
             outcome={outcome}
           />
         </Application>
+      </div>
+      <div className="arena-hud arena-hud-card">
+        <span className="arena-pill arena-pill-info">CUR {currentCard ?? "--"}</span>
+        <span className="arena-pill arena-pill-neutral">NXT {nextCard ?? "?"}</span>
+        <span className="arena-pill arena-pill-neutral">GUESS {guess ? guess.toUpperCase() : "--"}</span>
+        <span className={`arena-pill ${statusTone(status)}`}>{status.toUpperCase()}</span>
       </div>
     </div>
   );
@@ -144,13 +161,17 @@ function CardPeekerScene({ currentCard, nextCard, revealing, guess, outcome }: C
 
   const drawBackdrop = useCallback((graphics: Graphics) => {
     graphics.clear();
-    graphics.setFillStyle({ color: 0x101024, alpha: 0.95 });
+    graphics.setFillStyle({ color: 0x101024, alpha: 0.96 });
     graphics.roundRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT, 16);
     graphics.fill();
 
-    graphics.setStrokeStyle({ color: 0x475569, width: 1.4, alpha: 0.5 });
-    graphics.roundRect(1, 1, STAGE_WIDTH - 2, STAGE_HEIGHT - 2, 15);
-    graphics.stroke();
+    graphics.setFillStyle({ color: 0x2b1a57, alpha: 0.24 });
+    graphics.circle(64, 46, 90);
+    graphics.fill();
+
+    graphics.setFillStyle({ color: 0x12334f, alpha: 0.2 });
+    graphics.circle(STAGE_WIDTH - 56, 44, 90);
+    graphics.fill();
   }, []);
 
   const drawField = useCallback((graphics: Graphics) => {
@@ -169,7 +190,7 @@ function CardPeekerScene({ currentCard, nextCard, revealing, guess, outcome }: C
       const y = guess === "higher" ? 70 : 146;
       const sign = guess === "higher" ? -1 : 1;
       const base = STAGE_WIDTH / 2;
-      graphics.setFillStyle({ color: accent, alpha: 0.8 });
+      graphics.setFillStyle({ color: accent, alpha: 0.84 });
       graphics.moveTo(base, y + sign * -14);
       graphics.lineTo(base - 14, y + sign * 12);
       graphics.lineTo(base + 14, y + sign * 12);
@@ -177,6 +198,17 @@ function CardPeekerScene({ currentCard, nextCard, revealing, guess, outcome }: C
       graphics.fill();
     },
     [accent, guess],
+  );
+
+  const drawPulse = useCallback(
+    (graphics: Graphics) => {
+      graphics.clear();
+      const radius = 72 + Math.sin(frame.pulse * 0.12) * 7;
+      graphics.setStrokeStyle({ color: accent, width: 2.3, alpha: revealing ? 0.46 : 0.21 });
+      graphics.circle(STAGE_WIDTH / 2, 106, radius);
+      graphics.stroke();
+    },
+    [accent, frame.pulse, revealing],
   );
 
   const drawCardFront = useCallback(
@@ -215,6 +247,7 @@ function CardPeekerScene({ currentCard, nextCard, revealing, guess, outcome }: C
     <>
       <pixiGraphics draw={drawBackdrop} />
       <pixiGraphics draw={drawField} />
+      <pixiGraphics draw={drawPulse} />
       <pixiGraphics draw={drawArrow} />
       <pixiContainer x={108} y={112 + frame.lift}>
         {leftCard ? <pixiGraphics draw={drawCardFront} /> : <pixiGraphics draw={drawCardBack} />}
@@ -279,19 +312,6 @@ function CardPeekerScene({ currentCard, nextCard, revealing, guess, outcome }: C
           </>
         ) : null}
       </pixiContainer>
-
-      <pixiText
-        x={14}
-        y={12}
-        text="CARD PEEKER"
-        style={{
-          fill: "#cbd5e1",
-          fontFamily: "IBM Plex Mono",
-          fontWeight: "600",
-          fontSize: 11,
-          letterSpacing: 2,
-        }}
-      />
     </>
   );
 }

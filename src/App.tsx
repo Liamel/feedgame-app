@@ -262,6 +262,16 @@ function App() {
       lower: buildQuote((higherLowerCurrentCard - 1) / 13),
     };
   }, [higherLowerCurrentCard, higherLowerRoundId, higherLowerStake]);
+  const coinResultToneClass = coinResult
+    ? coinResult.outcome === "win"
+      ? "result-box-win"
+      : "result-box-loss"
+    : "result-box-neutral";
+  const diceResultToneClass = diceResult
+    ? diceResult.outcome === "win"
+      ? "result-box-win"
+      : "result-box-loss"
+    : "result-box-neutral";
 
   async function refreshHistory(token: string, currentPlayerId: string): Promise<RoundHistoryItem[]> {
     const rounds = await listPlayerRounds(token, currentPlayerId);
@@ -714,7 +724,10 @@ function App() {
                 />
                 <BetControls
                   value={coinStake}
-                  onValueChange={setCoinStake}
+                  onValueChange={(value) => {
+                    setCoinStake(value);
+                    setCoinResult(null);
+                  }}
                   min={STAKE_LIMITS.coin_flip.min}
                   max={STAKE_LIMITS.coin_flip.max}
                   step={0.1}
@@ -727,7 +740,10 @@ function App() {
                     <label className="text-sm text-muted-foreground">Choice</label>
                     <Select
                       value={coinChoice}
-                      onValueChange={(value) => setCoinChoice(value as "heads" | "tails")}
+                      onValueChange={(value) => {
+                        setCoinChoice(value as "heads" | "tails");
+                        setCoinResult(null);
+                      }}
                     >
                       <SelectTrigger className="w-full bg-white">
                         <SelectValue placeholder="Choice" />
@@ -739,7 +755,7 @@ function App() {
                     </Select>
                   </div>
                 </div>
-                <div className="result-box">
+                <div className={`result-box ${coinResultToneClass}`}>
                   <p>
                     If win: {coinPreview.multiplier.toFixed(3)}x |{" "}
                     {currencyFormatter.format(coinPreview.payout)}
@@ -748,6 +764,12 @@ function App() {
                     Win chance: {(coinPreview.winProbability * 100).toFixed(2)}% | House edge:{" "}
                     {(coinPreview.houseEdge * 100).toFixed(2)}%
                   </p>
+                  {coinResult ? (
+                    <p>
+                      <strong>{coinResult.outcome.toUpperCase()}</strong> | picked {coinResult.choice}, landed{" "}
+                      {coinResult.landed} | payout {currencyFormatter.format(coinResult.payout)}
+                    </p>
+                  ) : null}
                 </div>
                 <Button onClick={playCoinFlip} disabled={coinBusy || anyBusy}>
                   {coinBusy ? (
@@ -759,17 +781,6 @@ function App() {
                     "Flip Coin"
                   )}
                 </Button>
-                {coinResult ? (
-                  <div className="result-box">
-                    <p>
-                      <strong>{coinResult.outcome.toUpperCase()}</strong> | picked {coinResult.choice},
-                      landed {coinResult.landed}
-                    </p>
-                    <p>
-                      Payout: {currencyFormatter.format(coinResult.payout)} | Multiplier: {coinResult.multiplier.toFixed(3)}x
-                    </p>
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           </section>
@@ -793,7 +804,10 @@ function App() {
                 />
                 <BetControls
                   value={diceStake}
-                  onValueChange={setDiceStake}
+                  onValueChange={(value) => {
+                    setDiceStake(value);
+                    setDiceResult(null);
+                  }}
                   min={STAKE_LIMITS.dice_over_under.min}
                   max={STAKE_LIMITS.dice_over_under.max}
                   step={0.1}
@@ -806,7 +820,10 @@ function App() {
                     <label className="text-sm text-muted-foreground">Direction</label>
                     <Select
                       value={diceDirection}
-                      onValueChange={(value) => setDiceDirection(value as "over" | "under")}
+                      onValueChange={(value) => {
+                        setDiceDirection(value as "over" | "under");
+                        setDiceResult(null);
+                      }}
                     >
                       <SelectTrigger className="w-full bg-white">
                         <SelectValue placeholder="Direction" />
@@ -826,11 +843,14 @@ function App() {
                     max={98}
                     step="1"
                     value={diceThreshold}
-                    onChange={(event) => setDiceThreshold(event.target.value)}
+                    onChange={(event) => {
+                      setDiceThreshold(event.target.value);
+                      setDiceResult(null);
+                    }}
                     disabled={diceBusy}
                   />
                 </div>
-                <div className="result-box">
+                <div className={`result-box ${diceResultToneClass}`}>
                   <p>
                     If win: {dicePreview.multiplier.toFixed(3)}x |{" "}
                     {currencyFormatter.format(dicePreview.payout)}
@@ -839,6 +859,12 @@ function App() {
                     Win chance: {(dicePreview.winProbability * 100).toFixed(2)}% | House edge:{" "}
                     {(STANDARD_HOUSE_EDGE * 100).toFixed(2)}%
                   </p>
+                  {diceResult ? (
+                    <p>
+                      <strong>{diceResult.outcome.toUpperCase()}</strong> | {diceResult.direction} {diceResult.threshold},
+                      roll {diceResult.roll} | payout {currencyFormatter.format(diceResult.payout)}
+                    </p>
+                  ) : null}
                 </div>
                 <Button onClick={playDiceOverUnder} disabled={diceBusy || anyBusy}>
                   {diceBusy ? (
@@ -850,17 +876,6 @@ function App() {
                     "Roll Dice"
                   )}
                 </Button>
-                {diceResult ? (
-                  <div className="result-box">
-                    <p>
-                      <strong>{diceResult.outcome.toUpperCase()}</strong> | {diceResult.direction} {diceResult.threshold},
-                      roll {diceResult.roll}
-                    </p>
-                    <p>
-                      Payout: {currencyFormatter.format(diceResult.payout)} | Multiplier: {diceResult.multiplier.toFixed(3)}x
-                    </p>
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           </section>

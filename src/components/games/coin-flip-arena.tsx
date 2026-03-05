@@ -19,22 +19,33 @@ interface CoinFrame {
   glow: number;
 }
 
+function statusTone(status: "ready" | "flipping" | "win" | "loss"): string {
+  if (status === "win") {
+    return "arena-pill-win";
+  }
+  if (status === "loss") {
+    return "arena-pill-loss";
+  }
+  if (status === "flipping") {
+    return "arena-pill-live";
+  }
+  return "arena-pill-neutral";
+}
+
 export function CoinFlipArena({ flipping, choice, landed, outcome }: CoinFlipArenaProps) {
   useExtend({ Container, Graphics, Text });
 
   const landedSide = landed === "heads" || landed === "tails" ? landed : null;
-  const status = flipping ? "Flipping..." : outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Ready";
+  const status: "ready" | "flipping" | "win" | "loss" = flipping
+    ? "flipping"
+    : outcome === "win"
+      ? "win"
+      : outcome === "loss"
+        ? "loss"
+        : "ready";
 
   return (
-    <div className="coin-arena-shell">
-      <div className="coin-arena-overlay">
-        <span>PICK {choice.toUpperCase()}</span>
-        <span>{landedSide ? `LANDED ${landedSide.toUpperCase()}` : "LANDED --"}</span>
-      </div>
-      <div className="coin-arena-overlay coin-arena-bottom">
-        <span>TAP TO FLIP</span>
-        <span>{status}</span>
-      </div>
+    <div className="coin-arena-shell arena-shell">
       <div className="coin-arena-canvas">
         <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
           <CoinFlipScene
@@ -44,6 +55,13 @@ export function CoinFlipArena({ flipping, choice, landed, outcome }: CoinFlipAre
             outcome={outcome}
           />
         </Application>
+      </div>
+      <div className="arena-hud arena-hud-coin">
+        <span className="arena-pill arena-pill-info">{choice.toUpperCase()}</span>
+        <span className="arena-pill arena-pill-neutral">
+          {landedSide ? `LANDED ${landedSide.toUpperCase()}` : "LANDED --"}
+        </span>
+        <span className={`arena-pill ${statusTone(status)}`}>{status.toUpperCase()}</span>
       </div>
     </div>
   );
@@ -108,20 +126,24 @@ function CoinFlipScene({ flipping, landed, choice, outcome }: CoinFlipSceneProps
 
   const drawBackdrop = useCallback((graphics: Graphics) => {
     graphics.clear();
-    graphics.setFillStyle({ color: 0x091522, alpha: 0.94 });
+    graphics.setFillStyle({ color: 0x091522, alpha: 0.95 });
     graphics.roundRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT, 16);
     graphics.fill();
 
-    graphics.setStrokeStyle({ color: 0x334155, width: 1.5, alpha: 0.6 });
-    graphics.roundRect(1, 1, STAGE_WIDTH - 2, STAGE_HEIGHT - 2, 15);
-    graphics.stroke();
+    graphics.setFillStyle({ color: 0x3b1f08, alpha: 0.26 });
+    graphics.circle(58, 48, 92);
+    graphics.fill();
+
+    graphics.setFillStyle({ color: 0x0f2e54, alpha: 0.22 });
+    graphics.circle(STAGE_WIDTH - 56, 42, 88);
+    graphics.fill();
   }, []);
 
   const drawOrbit = useCallback(
     (graphics: Graphics) => {
       graphics.clear();
 
-      for (let i = 0; i < 24; i += 1) {
+      for (let i = 0; i < 28; i += 1) {
         const theta = frame.glow * 0.045 + i * 0.42;
         const radius = 66 + Math.sin(theta * 2.4) * 9;
         const x = Math.cos(theta) * radius;
@@ -152,9 +174,21 @@ function CoinFlipScene({ flipping, landed, choice, outcome }: CoinFlipSceneProps
     [accent],
   );
 
+  const drawPulse = useCallback(
+    (graphics: Graphics) => {
+      graphics.clear();
+      const radius = 70 + Math.sin(frame.glow * 0.09) * 9;
+      graphics.setStrokeStyle({ color: accent, width: 2.2, alpha: flipping ? 0.45 : 0.22 });
+      graphics.circle(STAGE_WIDTH / 2, 100 + frame.bob, radius);
+      graphics.stroke();
+    },
+    [accent, flipping, frame.bob, frame.glow],
+  );
+
   return (
     <>
       <pixiGraphics draw={drawBackdrop} />
+      <pixiGraphics draw={drawPulse} />
       <pixiContainer x={STAGE_WIDTH / 2} y={96 + frame.bob}>
         <pixiGraphics draw={drawOrbit} />
       </pixiContainer>
@@ -171,18 +205,6 @@ function CoinFlipScene({ flipping, landed, choice, outcome }: CoinFlipSceneProps
           fontFamily: "Space Grotesk",
           fontWeight: "800",
           fontSize: 52,
-        }}
-      />
-      <pixiText
-        x={14}
-        y={14}
-        text="COIN FLIP ARENA"
-        style={{
-          fill: "#cbd5e1",
-          fontFamily: "IBM Plex Mono",
-          fontWeight: "600",
-          fontSize: 11,
-          letterSpacing: 2,
         }}
       />
     </>

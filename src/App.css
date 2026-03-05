@@ -75,6 +75,24 @@
   line-height: 1.45;
   display: grid;
   gap: 4px;
+  transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.result-box-neutral {
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(15, 26, 43, 0.74);
+}
+
+.result-box-win {
+  border-color: rgba(74, 222, 128, 0.72);
+  background: linear-gradient(180deg, rgba(10, 54, 38, 0.82), rgba(7, 39, 28, 0.88));
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.2);
+}
+
+.result-box-loss {
+  border-color: rgba(251, 113, 133, 0.72);
+  background: linear-gradient(180deg, rgba(73, 16, 34, 0.84), rgba(54, 13, 27, 0.9));
+  box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.24);
 }
 
 .reel-coin {
@@ -127,11 +145,14 @@
   color: #dbe7f8;
 }
 
-.dice-arena-shell {
-  position: relative;
+.arena-shell {
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.32);
+  box-shadow: 0 14px 26px rgba(2, 6, 23, 0.42);
+}
+
+.dice-arena-shell {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.92));
 }
 
@@ -145,27 +166,81 @@
   display: block;
 }
 
-.dice-arena-overlay {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 6px;
-  z-index: 5;
+.arena-hud {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 0.69rem;
-  letter-spacing: 0.08em;
-  color: rgba(226, 232, 240, 0.96);
-  text-transform: uppercase;
-  pointer-events: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
 }
 
-.dice-arena-bottom {
-  top: auto;
-  bottom: 6px;
+.arena-hud-dice {
+  background: linear-gradient(180deg, rgba(8, 20, 35, 0.92), rgba(5, 13, 25, 0.96));
+}
+
+.arena-hud-coin {
+  background: linear-gradient(180deg, rgba(35, 24, 7, 0.9), rgba(23, 14, 5, 0.94));
+}
+
+.arena-hud-card {
+  background: linear-gradient(180deg, rgba(24, 11, 42, 0.9), rgba(13, 8, 26, 0.95));
+}
+
+.arena-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.8);
+  color: #e2e8f0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: arena-pop 260ms ease;
+}
+
+.arena-pill-info {
+  border-color: rgba(56, 189, 248, 0.65);
+  background: rgba(12, 44, 67, 0.66);
+  color: #bae6fd;
+}
+
+.arena-pill-neutral {
+  border-color: rgba(148, 163, 184, 0.38);
+  background: rgba(30, 41, 59, 0.65);
+}
+
+.arena-pill-live {
+  border-color: rgba(250, 204, 21, 0.7);
+  background: rgba(88, 69, 10, 0.58);
+  color: #fde68a;
+}
+
+.arena-pill-win {
+  border-color: rgba(74, 222, 128, 0.72);
+  background: rgba(9, 56, 33, 0.62);
+  color: #bbf7d0;
+}
+
+.arena-pill-loss {
+  border-color: rgba(251, 113, 133, 0.68);
+  background: rgba(80, 18, 38, 0.62);
+  color: #fecdd3;
+}
+
+@keyframes arena-pop {
+  from {
+    transform: translateY(4px);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .bet-controls {
@@ -224,14 +299,6 @@
   color: #8ea0b8;
 }
 
-.coin-arena-shell,
-.card-peeker-shell {
-  position: relative;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-}
-
 .coin-arena-shell {
   background: linear-gradient(180deg, rgba(28, 21, 8, 0.86), rgba(18, 13, 6, 0.94));
 }
@@ -253,29 +320,4 @@
   width: 100% !important;
   height: 100% !important;
   display: block;
-}
-
-.coin-arena-overlay,
-.card-peeker-overlay {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 6px;
-  z-index: 5;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 0.69rem;
-  letter-spacing: 0.08em;
-  color: rgba(226, 232, 240, 0.96);
-  text-transform: uppercase;
-  pointer-events: none;
-}
-
-.coin-arena-bottom,
-.card-peeker-bottom {
-  top: auto;
-  bottom: 6px;
 }
