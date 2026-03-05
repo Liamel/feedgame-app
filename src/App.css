@@ -1,42 +1,281 @@
-#root {
-  max-width: 1280px;
+.app-backdrop {
+  min-height: 100dvh;
+  padding: 0;
+  background:
+    radial-gradient(600px 360px at 8% 4%, rgba(56, 189, 248, 0.14), transparent 70%),
+    radial-gradient(640px 380px at 94% 8%, rgba(244, 114, 182, 0.14), transparent 68%),
+    linear-gradient(180deg, #080f18 0%, #0c1824 44%, #0e111f 100%);
+}
+
+.phone-shell {
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  max-width: 440px;
+  min-height: 100dvh;
+  background: rgba(6, 10, 18, 0.72);
+  border-left: 1px solid rgba(148, 163, 184, 0.2);
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  backdrop-filter: blur(6px);
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(3, 8, 14, 0.86);
+  backdrop-filter: blur(10px);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.feed-scroll {
+  height: calc(100dvh - 70px);
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
 }
 
-.card {
-  padding: 2em;
+.feed-slide {
+  min-height: calc(100dvh - 70px);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  align-items: center;
+  padding: 14px;
 }
 
-.read-the-docs {
-  color: #888;
+.reel-card {
+  width: 100%;
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(2, 6, 18, 0.84);
+  color: #e2e8f0;
+  box-shadow: 0 18px 38px rgba(1, 4, 10, 0.45);
+}
+
+.reel-card [class*="text-muted-foreground"] {
+  color: #a3afc2;
+}
+
+.reel-card input,
+.reel-card [data-slot="select-trigger"] {
+  background: rgba(11, 22, 37, 0.85);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #f8fafc;
+}
+
+.result-box {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: rgba(15, 26, 43, 0.74);
+  padding: 10px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  display: grid;
+  gap: 4px;
+}
+
+.reel-coin {
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.14), rgba(5, 9, 16, 0.06));
+}
+
+.reel-dice {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.14), rgba(5, 9, 16, 0.06));
+}
+
+.reel-higher-lower {
+  background: linear-gradient(180deg, rgba(232, 121, 249, 0.14), rgba(5, 9, 16, 0.06));
+}
+
+.reel-history {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.12), rgba(5, 9, 16, 0.06));
+}
+
+.error-inline {
+  margin: 10px 14px 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.28);
+  font-size: 0.88rem;
+}
+
+.activity-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.activity-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(11, 22, 37, 0.62);
+}
+
+.history-table-wrap {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.history-table-wrap table {
+  color: #dbe7f8;
+}
+
+.dice-arena-shell {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.92));
+}
+
+.dice-arena-canvas {
+  height: 214px;
+}
+
+.dice-arena-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.dice-arena-overlay {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.69rem;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.96);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.dice-arena-bottom {
+  top: auto;
+  bottom: 6px;
+}
+
+.bet-controls {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: rgba(12, 22, 36, 0.65);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.bet-controls-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9caec8;
+}
+
+.bet-controls-value {
+  color: #f8fafc;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.bet-controls-chips {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bet-controls-chips button {
+  min-width: 0;
+  padding-inline: 0;
+}
+
+.bet-range {
+  width: 100%;
+  accent-color: #38bdf8;
+}
+
+.bet-controls-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.bet-controls-footer p {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8ea0b8;
+}
+
+.coin-arena-shell,
+.card-peeker-shell {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+}
+
+.coin-arena-shell {
+  background: linear-gradient(180deg, rgba(28, 21, 8, 0.86), rgba(18, 13, 6, 0.94));
+}
+
+.card-peeker-shell {
+  background: linear-gradient(180deg, rgba(18, 10, 28, 0.86), rgba(9, 8, 24, 0.94));
+}
+
+.coin-arena-canvas {
+  height: 204px;
+}
+
+.card-peeker-canvas {
+  height: 214px;
+}
+
+.coin-arena-canvas canvas,
+.card-peeker-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.coin-arena-overlay,
+.card-peeker-overlay {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.69rem;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.96);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.coin-arena-bottom,
+.card-peeker-bottom {
+  top: auto;
+  bottom: 6px;
 }

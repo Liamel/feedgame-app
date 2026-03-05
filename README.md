@@ -1,73 +1,59 @@
-# React + TypeScript + Vite
+# Feed Casino Demo Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Simple React demo UI wired to the backend in `/Users/r.kazaishvili/Documents/FeedGame`.
 
-Currently, two official plugins are available:
+It supports:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- issuing session tokens (`/v1/operator/session-token`)
+- fetching feed games (`/v1/feed/next`)
+- starting rounds (`/v1/rounds/start`)
+- round actions (`/v1/rounds/:roundId/action`) for `higher_lower` and `mines`
+- settling rounds (`/v1/rounds/:roundId/settle`)
+- viewing player round history (`/v1/players/:playerId/rounds`)
+- verifying round reveal payload (`/v1/rounds/:roundId/verify`)
 
-## React Compiler
+## UI Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Tailwind CSS v4 (`tailwindcss`, `@tailwindcss/vite`)
+- shadcn/ui initialized (`components.json`, `src/components/ui/*`)
+- PixiJS React renderer (`pixi.js`, `@pixi/react`) with live preview component at `src/components/pixi-preview.tsx`
 
-## Expanding the ESLint configuration
+You can add more shadcn components with:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm dlx shadcn@latest add button card input select table
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Prerequisites
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- backend running on `http://localhost:8080`
+- Postgres/Redis up for backend (or backend running with in-memory persistence)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Backend quick start (from `/Users/r.kazaishvili/Documents/FeedGame`):
+
+```bash
+docker compose up -d postgres redis
+pnpm --filter @feed-casino/server migrate
+pnpm --filter @feed-casino/server dev
+```
+
+## Frontend Run
+
+From `/Users/r.kazaishvili/Documents/FeedGameAPP/feedgame-app`:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+The frontend calls `/api/*`, and Vite proxies that to `http://localhost:8080`.
+
+## Optional Env Vars
+
+Create `.env.local` in this frontend project if needed:
+
+```bash
+VITE_API_BASE_URL=/api
+VITE_OPERATOR_API_KEY=operator-dev-key
+VITE_DEFAULT_STARTING_BALANCE=1000
 ```
