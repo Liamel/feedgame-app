@@ -1,6 +1,14 @@
 import { Application, useExtend } from "@pixi/react";
 import { Container, Graphics, Text } from "pixi.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { playGameSfx } from "./shared/game-audio";
+import {
+  createParticlePool,
+  drawParticlePool,
+  emitParticleBurst,
+  updateParticlePool,
+} from "./shared/particles";
+import { useArenaVisibility } from "./shared/use-arena-visibility";
 
 interface MinesBugHuntArenaProps {
   active: boolean;
@@ -38,6 +46,11 @@ interface StrikeState {
   progress: number;
 }
 
+interface MotionState {
+  phase: number;
+  flash: number;
+}
+
 function statusTone(status: "ready" | "hunting" | "win" | "loss"): string {
   if (status === "win") {
     return "arena-pill-win";
@@ -63,38 +76,16 @@ export function MinesBugHuntArena({
   onReveal,
 }: MinesBugHuntArenaProps) {
   useExtend({ Container, Graphics, Text });
-  const stageHostRef = useRef<HTMLDivElement | null>(null);
-  const [stageReady, setStageReady] = useState(
-    () => typeof window !== "undefined" && typeof window.IntersectionObserver === "undefined",
-  );
-
-  const [phase, setPhase] = useState(0);
-  const [flash, setFlash] = useState(0);
+  const { hostRef, isNearViewport, stageReady } = useArenaVisibility();
+  const [motion, setMotion] = useState<MotionState>({
+    phase: 0,
+    flash: 0,
+  });
   const [strike, setStrike] = useState<StrikeState | null>(null);
 
   const previousRevealedRef = useRef<number[]>(revealed);
   const pendingFlashRef = useRef(0);
-  const audioContextRef = useRef<AudioContext | null>(null);
-
-  useEffect(() => {
-    const host = stageHostRef.current;
-    if (!host || stageReady || typeof window === "undefined" || typeof window.IntersectionObserver === "undefined") {
-      return;
-    }
-
-    const observer = new window.IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setStageReady(true);
-          observer.disconnect();
-        }
-      },
-      { root: null, rootMargin: "220px" },
-    );
-
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, [stageReady]);
+  const particlePoolRef = useRef(createParticlePool(128));
 
   const revealedSet = useMemo(() => new Set(revealed), [revealed]);
   const bombSet = useMemo(() => new Set(bombs), [bombs]);
@@ -125,123 +116,55 @@ export function MinesBugHuntArena({
     [],
   );
 
-  const getAudioContext = useCallback((): AudioContext | null => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-    if (!audioContextRef.current) {
-      const AudioCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtor) {
-        return null;
-      }
-      audioContextRef.current = new AudioCtor();
-    }
-    if (audioContextRef.current.state === "suspended") {
-      void audioContextRef.current.resume();
-    }
-    return audioContextRef.current;
-  }, []);
-
-  const playSwatSfx = useCallback(() => {
-    const context = getAudioContext();
-    if (!context) {
-      return;
-    }
-    const now = context.currentTime;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "triangle";
-    oscillator.frequency.setValueAtTime(460, now);
-    oscillator.frequency.exponentialRampToValueAtTime(140, now + 0.11);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.15);
-  }, [getAudioContext]);
-
-  const playHitSfx = useCallback(() => {
-    const context = getAudioContext();
-    if (!context) {
-      return;
-    }
-    const now = context.currentTime;
-
-    const pop = context.createOscillator();
-    const popGain = context.createGain();
-    pop.type = "square";
-    pop.frequency.setValueAtTime(210, now);
-    pop.frequency.exponentialRampToValueAtTime(120, now + 0.1);
-    popGain.gain.setValueAtTime(0.0001, now);
-    popGain.gain.exponentialRampToValueAtTime(0.14, now + 0.01);
-    popGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-    pop.connect(popGain).connect(context.destination);
-    pop.start(now);
-    pop.stop(now + 0.13);
-
-    const sparkle = context.createOscillator();
-    const sparkleGain = context.createGain();
-    sparkle.type = "triangle";
-    sparkle.frequency.setValueAtTime(680, now + 0.02);
-    sparkle.frequency.exponentialRampToValueAtTime(980, now + 0.09);
-    sparkleGain.gain.setValueAtTime(0.0001, now + 0.02);
-    sparkleGain.gain.exponentialRampToValueAtTime(0.08, now + 0.035);
-    sparkleGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
-    sparkle.connect(sparkleGain).connect(context.destination);
-    sparkle.start(now + 0.02);
-    sparkle.stop(now + 0.12);
-  }, [getAudioContext]);
-
-  const playBoomSfx = useCallback(() => {
-    const context = getAudioContext();
-    if (!context) {
-      return;
-    }
-    const now = context.currentTime;
-    const burstDuration = 0.24;
-
-    const buffer = context.createBuffer(1, Math.floor(context.sampleRate * burstDuration), context.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i += 1) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-    }
-
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    const filter = context.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.setValueAtTime(1100, now);
-    filter.frequency.exponentialRampToValueAtTime(320, now + burstDuration);
-
-    const gain = context.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.28, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + burstDuration);
-
-    source.connect(filter).connect(gain).connect(context.destination);
-    source.start(now);
-    source.stop(now + burstDuration);
-  }, [getAudioContext]);
-
   useEffect(() => {
     const previousSet = new Set(previousRevealedRef.current);
     const addedTile = revealed.find((tile) => !previousSet.has(tile));
     if (addedTile !== undefined) {
+      const target = tileGeometry[addedTile];
       const bombHit = explodedAt !== null && addedTile === explodedAt;
       if (bombHit) {
-        playBoomSfx();
+        playGameSfx("mines-boom");
         pendingFlashRef.current = Math.max(pendingFlashRef.current, 1);
+        if (target) {
+          emitParticleBurst(particlePoolRef.current, {
+            x: target.centerX,
+            y: target.centerY,
+            count: 42,
+            colors: [0xfda4af, 0xfdba74, 0xfef2f2],
+            speedMin: 2.6,
+            speedMax: 13,
+            lifeMinMs: 260,
+            lifeMaxMs: 860,
+            radiusMin: 1.4,
+            radiusMax: 5.2,
+            gravity: 0.11,
+          });
+        }
       } else {
-        playHitSfx();
+        playGameSfx("mines-safe");
         pendingFlashRef.current = Math.max(pendingFlashRef.current, 0.45);
+        if (target) {
+          emitParticleBurst(particlePoolRef.current, {
+            x: target.centerX,
+            y: target.centerY,
+            count: 16,
+            colors: [0x86efac, 0xfef08a, 0xf8fafc],
+            speedMin: 2.2,
+            speedMax: 7.4,
+            lifeMinMs: 200,
+            lifeMaxMs: 560,
+            radiusMin: 1.1,
+            radiusMax: 3.2,
+            gravity: 0.08,
+          });
+        }
       }
     }
     previousRevealedRef.current = revealed;
-  }, [explodedAt, playBoomSfx, playHitSfx, revealed]);
+  }, [explodedAt, revealed, tileGeometry]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !stageReady || !isNearViewport) {
       return;
     }
 
@@ -251,13 +174,17 @@ export function MinesBugHuntArena({
     const tick = (now: number) => {
       const delta = Math.min(34, now - lastTime);
       lastTime = now;
+      updateParticlePool(particlePoolRef.current, delta);
 
-      setPhase((value) => value + delta * 0.028);
-      setFlash((value) => {
-        const boosted = Math.max(value, pendingFlashRef.current);
+      setMotion((previous) => {
+        const boostedFlash = Math.max(previous.flash, pendingFlashRef.current);
         pendingFlashRef.current = 0;
-        return Math.max(0, boosted - delta * 0.0019);
+        return {
+          phase: previous.phase + delta * 0.028,
+          flash: Math.max(0, boostedFlash - delta * 0.0019),
+        };
       });
+
       setStrike((current) => {
         if (!current) {
           return current;
@@ -277,7 +204,7 @@ export function MinesBugHuntArena({
 
     rafId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(rafId);
-  }, []);
+  }, [isNearViewport, stageReady]);
 
   const drawBackdrop = useCallback(
     (graphics: Graphics) => {
@@ -294,13 +221,16 @@ export function MinesBugHuntArena({
       graphics.circle(STAGE_WIDTH - 56, 58, 100);
       graphics.fill();
 
-      if (flash > 0) {
-        graphics.setFillStyle({ color: explodedAt !== null ? 0xf97316 : 0x10b981, alpha: Math.min(0.55, flash * 0.4) });
+      if (motion.flash > 0) {
+        graphics.setFillStyle({
+          color: explodedAt !== null ? 0xf97316 : 0x10b981,
+          alpha: Math.min(0.55, motion.flash * 0.4),
+        });
         graphics.roundRect(6, 6, STAGE_WIDTH - 12, STAGE_HEIGHT - 12, 14);
         graphics.fill();
       }
     },
-    [explodedAt, flash],
+    [explodedAt, motion.flash],
   );
 
   const drawGrid = useCallback(
@@ -311,6 +241,7 @@ export function MinesBugHuntArena({
         const isRevealed = revealedSet.has(tile.tile);
         const isBomb = bombSet.has(tile.tile);
         const isExploded = explodedAt === tile.tile;
+        const phaseScale = 1 + (isExploded ? motion.flash * 0.45 : 0);
 
         if (isExploded) {
           graphics.setFillStyle({ color: 0xb91c1c, alpha: 0.95 });
@@ -332,8 +263,8 @@ export function MinesBugHuntArena({
         graphics.roundRect(tile.x, tile.y, TILE_SIZE, TILE_SIZE, 10);
         graphics.stroke();
 
-        const wobbleX = Math.sin(phase * 0.18 + tile.tile * 0.7) * 5;
-        const wobbleY = Math.cos(phase * 0.14 + tile.tile * 1.15) * 4;
+        const wobbleX = Math.sin(motion.phase * 0.18 + tile.tile * 0.7) * 5;
+        const wobbleY = Math.cos(motion.phase * 0.14 + tile.tile * 1.15) * 4;
         const flyX = tile.centerX + wobbleX;
         const flyY = tile.centerY + wobbleY;
 
@@ -351,21 +282,33 @@ export function MinesBugHuntArena({
           graphics.fill();
         } else if (isBomb) {
           graphics.setFillStyle({ color: 0x020617, alpha: 0.94 });
-          graphics.circle(tile.centerX, tile.centerY, 8.5);
+          graphics.circle(tile.centerX, tile.centerY, 8.5 * phaseScale);
           graphics.fill();
           graphics.setStrokeStyle({ color: 0xfca5a5, width: 1.5, alpha: 0.9 });
           for (let i = 0; i < 8; i += 1) {
             const angle = (i / 8) * Math.PI * 2;
-            graphics.moveTo(tile.centerX + Math.cos(angle) * 10, tile.centerY + Math.sin(angle) * 10);
-            graphics.lineTo(tile.centerX + Math.cos(angle) * 14, tile.centerY + Math.sin(angle) * 14);
+            graphics.moveTo(
+              tile.centerX + Math.cos(angle) * 10,
+              tile.centerY + Math.sin(angle) * 10,
+            );
+            graphics.lineTo(
+              tile.centerX + Math.cos(angle) * 14,
+              tile.centerY + Math.sin(angle) * 14,
+            );
           }
           graphics.stroke();
           if (isExploded) {
             graphics.setStrokeStyle({ color: 0xfdba74, width: 2.4, alpha: 0.92 });
             for (let i = 0; i < 10; i += 1) {
-              const angle = (i / 10) * Math.PI * 2 + phase * 0.06;
-              graphics.moveTo(tile.centerX + Math.cos(angle) * 12, tile.centerY + Math.sin(angle) * 12);
-              graphics.lineTo(tile.centerX + Math.cos(angle) * 22, tile.centerY + Math.sin(angle) * 22);
+              const angle = (i / 10) * Math.PI * 2 + motion.phase * 0.06;
+              graphics.moveTo(
+                tile.centerX + Math.cos(angle) * 12,
+                tile.centerY + Math.sin(angle) * 12,
+              );
+              graphics.lineTo(
+                tile.centerX + Math.cos(angle) * (22 + motion.flash * 8),
+                tile.centerY + Math.sin(angle) * (22 + motion.flash * 8),
+              );
             }
             graphics.stroke();
           }
@@ -384,7 +327,7 @@ export function MinesBugHuntArena({
         }
       }
     },
-    [bombSet, explodedAt, phase, revealedSet, tileGeometry],
+    [bombSet, explodedAt, motion.flash, motion.phase, revealedSet, tileGeometry],
   );
 
   const drawStrike = useCallback(
@@ -401,12 +344,16 @@ export function MinesBugHuntArena({
       const startX = STAGE_WIDTH - 20;
       const startY = 16;
       const downPhase = Math.min(1, strike.progress / 0.72);
-      const upPhase = strike.progress > 0.72 ? Math.min(1, (strike.progress - 0.72) / 0.48) : 0;
+      const upPhase =
+        strike.progress > 0.72
+          ? Math.min(1, (strike.progress - 0.72) / 0.48)
+          : 0;
       const swing = upPhase > 0 ? 1 - upPhase : downPhase;
 
       const strikeX = startX + (target.centerX - startX) * (0.1 + swing * 0.9);
       const strikeY = startY + (target.centerY - startY) * (0.1 + swing * 0.9);
-      const angle = Math.atan2(target.centerY - startY, target.centerX - startX) + 0.22;
+      const angle =
+        Math.atan2(target.centerY - startY, target.centerX - startX) + 0.22;
       const handleX = strikeX - Math.cos(angle) * 72;
       const handleY = strikeY - Math.sin(angle) * 72;
 
@@ -432,26 +379,32 @@ export function MinesBugHuntArena({
     [strike, tileGeometry],
   );
 
+  const drawParticles = useCallback((graphics: Graphics) => {
+    graphics.clear();
+    drawParticlePool(graphics, particlePoolRef.current);
+  }, []);
+
   const handleReveal = useCallback(
     (tile: number) => {
       if (!active || locked || revealedSet.has(tile) || strike !== null) {
         return;
       }
       setStrike({ tile, progress: 0 });
-      playSwatSfx();
+      playGameSfx("mines-swat");
       onReveal(tile);
     },
-    [active, locked, onReveal, playSwatSfx, revealedSet, strike],
+    [active, locked, onReveal, revealedSet, strike],
   );
 
   return (
     <div className="mines-hunt-shell arena-shell">
-      <div className="mines-hunt-stage" ref={stageHostRef} style={{ height: STAGE_HEIGHT }}>
+      <div className="mines-hunt-stage" ref={hostRef} style={{ height: STAGE_HEIGHT }}>
         {stageReady ? (
           <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
             <pixiGraphics draw={drawBackdrop} />
             <pixiGraphics draw={drawGrid} />
             <pixiGraphics draw={drawStrike} />
+            <pixiGraphics draw={drawParticles} />
             <pixiText
               x={16}
               y={12}
@@ -490,7 +443,12 @@ export function MinesBugHuntArena({
           }}
         >
           {tileGeometry.map((tile) => {
-            const disabled = !stageReady || !active || locked || revealedSet.has(tile.tile) || strike !== null;
+            const disabled =
+              !stageReady ||
+              !active ||
+              locked ||
+              revealedSet.has(tile.tile) ||
+              strike !== null;
             return (
               <button
                 key={tile.tile}
@@ -507,7 +465,9 @@ export function MinesBugHuntArena({
       <div className="arena-hud arena-hud-mines">
         <span className="arena-pill arena-pill-info">{`${bombCount} BOMBS`}</span>
         <span className="arena-pill arena-pill-neutral">{`${safeHits} HITS`}</span>
-        <span className={`arena-pill ${statusTone(status)}`}>{status.toUpperCase()}</span>
+        <span className={`arena-pill ${statusTone(status)}`}>
+          {status.toUpperCase()}
+        </span>
       </div>
     </div>
   );

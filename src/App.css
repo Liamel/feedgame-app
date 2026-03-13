@@ -77,6 +77,71 @@
   backdrop-filter: blur(10px);
 }
 
+.audio-controls {
+  margin-top: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.audio-toggle {
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  background: rgba(14, 32, 51, 0.82);
+  color: #dbeafe;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.audio-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.audio-toggle-muted {
+  border-color: rgba(248, 113, 113, 0.56);
+  color: #fecaca;
+  background: rgba(66, 20, 30, 0.78);
+}
+
+.audio-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 86px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: linear-gradient(
+      90deg,
+      rgba(45, 212, 191, 0.78),
+      rgba(56, 189, 248, 0.58)
+    ),
+    rgba(8, 20, 33, 0.86);
+}
+
+.audio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.76);
+  background: #ecfeff;
+  cursor: pointer;
+}
+
+.audio-slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.76);
+  background: #ecfeff;
+  cursor: pointer;
+}
+
 .feed-scroll {
   height: calc(100dvh - 70px);
   overflow-y: auto;

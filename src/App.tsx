@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 import { Dice1, LoaderCircle, TrendingUp, Zap } from "lucide-react";
 import "./App.css";
 import { BetControls } from "@/components/bet/bet-controls";
@@ -9,6 +9,12 @@ import { CoinFlipArena } from "@/components/games/coin-flip-arena";
 import { DiceArena } from "@/components/games/dice-arena";
 import { MinesBugHuntArena } from "@/components/games/mines-bug-hunt-arena";
 import { WheelArena } from "@/components/games/wheel-arena";
+import {
+  playGameSfx,
+  setGameAudioMuted,
+  setGameAudioVolume,
+  useGameAudioState,
+} from "@/components/games/shared/game-audio";
 import {
   Card,
   CardContent,
@@ -303,6 +309,8 @@ function App() {
   const [minesResult, setMinesResult] = useState<MinesRoundResult | null>(null);
 
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const audioState = useGameAudioState();
+  const hoverInteractiveRef = useRef<HTMLElement | null>(null);
 
   const parsedStartingBalance = useMemo(() => {
     const parsed = Number(startingBalance);
@@ -454,6 +462,55 @@ function App() {
     const clamped = clampInt(next, 1, 24);
     setMinesBombCount(String(clamped));
     setMinesResult(null);
+  }
+
+  function interactiveTargetFromEvent(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof HTMLElement)) {
+      return null;
+    }
+    return target.closest<HTMLElement>(
+      "button,[role='button'],[data-slot='select-trigger'],input[type='range'],.mines-hit-btn",
+    );
+  }
+
+  function handleUiHoverCapture(event: MouseEvent<HTMLDivElement>): void {
+    const interactive = interactiveTargetFromEvent(event.target);
+    if (!interactive || interactive.hasAttribute("disabled")) {
+      return;
+    }
+    if (hoverInteractiveRef.current === interactive) {
+      return;
+    }
+    hoverInteractiveRef.current = interactive;
+    playGameSfx("ui-hover");
+  }
+
+  function handleUiLeaveCapture(): void {
+    hoverInteractiveRef.current = null;
+  }
+
+  function handleUiClickCapture(event: MouseEvent<HTMLDivElement>): void {
+    const interactive = interactiveTargetFromEvent(event.target);
+    if (!interactive || interactive.hasAttribute("disabled")) {
+      return;
+    }
+    playGameSfx("ui-click");
+  }
+
+  function handleAudioToggle(): void {
+    const nextMuted = !audioState.muted;
+    setGameAudioMuted(nextMuted);
+    if (!nextMuted) {
+      playGameSfx("ui-click", { cooldownMs: 0 });
+    }
+  }
+
+  function handleAudioVolumeChange(nextValue: string): void {
+    const nextVolume = Math.max(0, Math.min(1, Number(nextValue) / 100));
+    setGameAudioVolume(nextVolume);
+    if (!audioState.muted) {
+      playGameSfx("ui-hover", { cooldownMs: 50, intensity: 0.62 });
+    }
   }
 
   useEffect(
@@ -1096,7 +1153,12 @@ function App() {
   return (
     <div className="app-backdrop">
       {diceScreenFlash ? <div className={`dice-screen-flash dice-screen-flash-${diceScreenFlash}`} /> : null}
-      <div className="phone-shell">
+      <div
+        className="phone-shell"
+        onMouseOverCapture={handleUiHoverCapture}
+        onMouseLeave={handleUiLeaveCapture}
+        onClickCapture={handleUiClickCapture}
+      >
         <header className="top-bar">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">FeedGame Reels</p>
@@ -1105,6 +1167,25 @@ function App() {
           <div className="text-right">
             <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Balance</p>
             <p className="text-lg font-semibold text-emerald-300">{currencyFormatter.format(visibleBalance)}</p>
+            <div className="audio-controls">
+              <button
+                type="button"
+                className={`audio-toggle ${audioState.muted ? "audio-toggle-muted" : ""}`}
+                onClick={handleAudioToggle}
+              >
+                {audioState.muted ? "SFX OFF" : "SFX ON"}
+              </button>
+              <input
+                className="audio-slider"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(audioState.volume * 100)}
+                onChange={(event) => handleAudioVolumeChange(event.target.value)}
+                aria-label="Sound volume"
+              />
+            </div>
           </div>
         </header>
 
