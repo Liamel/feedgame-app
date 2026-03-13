@@ -54,6 +54,7 @@
 }
 
 .phone-shell {
+  --top-bar-height: 48px;
   margin: 0 auto;
   max-width: 440px;
   min-height: 100dvh;
@@ -69,24 +70,81 @@
   z-index: 20;
   display: flex;
   justify-content: space-between;
-  align-items: end;
-  gap: 12px;
-  padding: 12px 14px 10px;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-height: var(--top-bar-height);
+  gap: 6px;
+  padding: 5px 8px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(3, 8, 14, 0.86);
   backdrop-filter: blur(10px);
   box-shadow: 0 8px 22px rgba(1, 4, 12, 0.44);
 }
 
-.audio-controls {
-  margin-top: 5px;
+.top-ident {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #cbd5e1;
+}
+
+.top-brand {
+  margin: 0;
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.top-ident-dot {
+  color: #64748b;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.top-player {
+  margin: 0;
+  min-width: 0;
+  max-width: min(38vw, 160px);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-actions {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.top-balance-label {
+  margin: 0;
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.audio-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
 .top-balance {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1;
+  font-weight: 700;
+  color: #6ee7b7;
   text-shadow:
     0 0 16px rgba(74, 222, 128, 0.36),
     0 0 2px rgba(236, 253, 245, 0.5);
@@ -99,9 +157,10 @@
   background: rgba(14, 32, 51, 0.82);
   color: #dbeafe;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.08em;
-  padding: 3px 8px;
+  font-size: 0.48rem;
+  letter-spacing: 0.07em;
+  padding: 2px 6px;
+  line-height: 1;
   transition: transform 120ms ease, border-color 120ms ease;
 }
 
@@ -119,8 +178,8 @@
 .audio-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 86px;
-  height: 7px;
+  width: 58px;
+  height: 5px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.36);
   background: linear-gradient(
@@ -134,8 +193,8 @@
 .audio-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 13px;
-  height: 13px;
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
   border: 2px solid rgba(255, 255, 255, 0.76);
   background: #ecfeff;
@@ -143,8 +202,8 @@
 }
 
 .audio-slider::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
   border: 2px solid rgba(255, 255, 255, 0.76);
   background: #ecfeff;
@@ -152,19 +211,37 @@
 }
 
 .feed-scroll {
-  height: calc(100dvh - 70px);
+  height: calc(100dvh - var(--top-bar-height));
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
 }
 
 .feed-slide {
-  min-height: calc(100dvh - 70px);
+  min-height: calc(100dvh - var(--top-bar-height));
   scroll-snap-align: start;
   scroll-snap-stop: always;
   display: flex;
   align-items: center;
   padding: 14px;
+}
+
+@media (max-width: 420px) {
+  .phone-shell {
+    --top-bar-height: 42px;
+  }
+
+  .top-player {
+    max-width: min(34vw, 118px);
+  }
+
+  .top-balance-label {
+    display: none;
+  }
+
+  .top-balance {
+    font-size: 0.78rem;
+  }
 }
 
 .reel-card {

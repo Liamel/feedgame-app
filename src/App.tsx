@@ -1169,13 +1169,14 @@ function App() {
         onClickCapture={handleUiClickCapture}
       >
         <header className="top-bar">
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">FeedGame Reels</p>
-            <p className="text-sm font-medium text-zinc-100">{activePlayerId}</p>
+          <div className="top-ident">
+            <p className="top-brand">FeedGame Reels</p>
+            <span className="top-ident-dot">•</span>
+            <p className="top-player">{activePlayerId}</p>
           </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Balance</p>
-            <p key={balancePulseKey} className="top-balance text-lg font-semibold text-emerald-300">
+          <div className="top-actions">
+            <p className="top-balance-label">Balance</p>
+            <p key={balancePulseKey} className="top-balance">
               {currencyFormatter.format(visibleBalance)}
             </p>
             <div className="audio-controls">
