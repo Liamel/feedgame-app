@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Dice1, LoaderCircle, TrendingUp, Zap } from "lucide-react";
 import "./App.css";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CardPeekerArena } from "@/components/games/card-peeker-arena";
 import { CoinFlipArena } from "@/components/games/coin-flip-arena";
 import { DiceArena } from "@/components/games/dice-arena";
+import { MinesBugHuntArena } from "@/components/games/mines-bug-hunt-arena";
 import { WheelArena } from "@/components/games/wheel-arena";
 import {
   Card,
@@ -279,6 +280,8 @@ function App() {
   const [diceThreshold, setDiceThreshold] = useState("50");
   const [diceBusy, setDiceBusy] = useState(false);
   const [diceResult, setDiceResult] = useState<DiceRoundResult | null>(null);
+  const [diceScreenFlash, setDiceScreenFlash] = useState<"win" | "loss" | null>(null);
+  const diceFlashTimerRef = useRef<number | null>(null);
 
   const [higherLowerStake, setHigherLowerStake] = useState("1");
   const [higherLowerRoundId, setHigherLowerRoundId] = useState<string | null>(null);
@@ -445,6 +448,22 @@ function App() {
   const minesLiveMultiplier = minesRound?.currentMultiplier ?? 1;
   const minesCashoutPayout = minesRound ? minesRound.stake * minesLiveMultiplier : 0;
   const wheelVisualSpinning = wheelBusy && wheelResult === null;
+  const minesBombCountValue = clampInt(toNumber(minesBombCount), 1, 24);
+
+  function setMinesBombCountValue(next: number): void {
+    const clamped = clampInt(next, 1, 24);
+    setMinesBombCount(String(clamped));
+    setMinesResult(null);
+  }
+
+  useEffect(
+    () => () => {
+      if (diceFlashTimerRef.current !== null) {
+        window.clearTimeout(diceFlashTimerRef.current);
+      }
+    },
+    [],
+  );
 
   async function refreshHistory(token: string, currentPlayerId: string): Promise<RoundHistoryItem[]> {
     const rounds = await listPlayerRounds(token, currentPlayerId);
@@ -498,6 +517,11 @@ function App() {
       setWheelResult(null);
       setMinesRound(null);
       setMinesResult(null);
+      setDiceScreenFlash(null);
+      if (diceFlashTimerRef.current !== null) {
+        window.clearTimeout(diceFlashTimerRef.current);
+        diceFlashTimerRef.current = null;
+      }
       setActivity([]);
 
       const rounds = await refreshHistory(nextSession.token, trimmedPlayerId);
@@ -616,6 +640,17 @@ function App() {
         payout: settle.payout,
         multiplier: settle.multiplier,
       });
+      if (diceFlashTimerRef.current !== null) {
+        window.clearTimeout(diceFlashTimerRef.current);
+      }
+      setDiceScreenFlash(settle.outcome);
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate(settle.outcome === "win" ? [44, 22, 34] : [22, 24, 22, 24, 20]);
+      }
+      diceFlashTimerRef.current = window.setTimeout(() => {
+        setDiceScreenFlash(null);
+        diceFlashTimerRef.current = null;
+      }, 420);
       setBalance(settle.balance);
       pushActivity({
         title: `Dice: ${diceDirection} ${threshold}, roll ${roll}`,
@@ -1060,6 +1095,7 @@ function App() {
 
   return (
     <div className="app-backdrop">
+      {diceScreenFlash ? <div className={`dice-screen-flash dice-screen-flash-${diceScreenFlash}`} /> : null}
       <div className="phone-shell">
         <header className="top-bar">
           <div>
@@ -1156,18 +1192,18 @@ function App() {
 
           <section className="feed-slide reel-dice">
             <Card className="reel-card">
-              <CardHeader>
+              <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2">
                   <Dice1 className="size-4 text-cyan-300" />
                   Dice Over/Under
                 </CardTitle>
-                <CardDescription>Set threshold and direction, then roll.</CardDescription>
+                <CardDescription className="text-xs">Pick side, slide target, and send the cube.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3">
+              <CardContent className="grid gap-1.5">
                 <DiceArena
                   rolling={diceBusy}
                   rollValue={diceBusy ? null : (diceResult?.roll ?? null)}
-                  threshold={clampInt(toNumber(diceThreshold), 2, 98)}
+                  threshold={dicePreview.threshold}
                   direction={diceDirection}
                   outcome={diceResult?.outcome ?? null}
                 />
@@ -1182,60 +1218,72 @@ function App() {
                   step={0.1}
                   quickBets={QUICK_BETS}
                   currency={currency}
+                  className="bet-controls-dice"
+                  showManualInput={false}
                   disabled={diceBusy || anyBusy}
                 />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <label className="text-sm text-muted-foreground">Direction</label>
-                    <Select
-                      value={diceDirection}
-                      onValueChange={(value) => {
-                        setDiceDirection(value as "over" | "under");
-                        setDiceResult(null);
-                      }}
-                    >
-                      <SelectTrigger className="w-full bg-white">
-                        <SelectValue placeholder="Direction" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="over">over</SelectItem>
-                        <SelectItem value="under">under</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="dice-direction-toggle">
+                  <button
+                    type="button"
+                    className={`dice-direction-btn ${diceDirection === "under" ? "dice-direction-btn-active" : ""}`}
+                    onClick={() => {
+                      setDiceDirection("under");
+                      setDiceResult(null);
+                    }}
+                    disabled={diceBusy || anyBusy}
+                  >
+                    {"UNDER <"}
+                  </button>
+                  <button
+                    type="button"
+                    className={`dice-direction-btn ${diceDirection === "over" ? "dice-direction-btn-active" : ""}`}
+                    onClick={() => {
+                      setDiceDirection("over");
+                      setDiceResult(null);
+                    }}
+                    disabled={diceBusy || anyBusy}
+                  >
+                    {"OVER >"}
+                  </button>
                 </div>
-                <div className="grid gap-1.5">
-                  <label className="text-sm text-muted-foreground">Threshold (2-98)</label>
-                  <Input
-                    type="number"
+                <div className="dice-threshold-controls">
+                  <div className="dice-threshold-head">
+                    <p>Target</p>
+                    <p className="dice-threshold-value">{dicePreview.threshold}</p>
+                    <p>{(dicePreview.winProbability * 100).toFixed(1)}% hit</p>
+                  </div>
+                  <input
+                    className="dice-threshold-slider"
+                    type="range"
                     min={2}
                     max={98}
-                    step="1"
-                    value={diceThreshold}
+                    step={1}
+                    value={dicePreview.threshold}
                     onChange={(event) => {
                       setDiceThreshold(event.target.value);
                       setDiceResult(null);
                     }}
-                    disabled={diceBusy}
+                    disabled={diceBusy || anyBusy}
                   />
+                  <div className="dice-threshold-scale">
+                    <span>2</span>
+                    <span>50</span>
+                    <span>98</span>
+                  </div>
                 </div>
-                <div className={`result-box ${diceResultToneClass}`}>
+                <div className={`result-box dice-result-box ${diceResultToneClass}`}>
                   <p>
-                    If win: {dicePreview.multiplier.toFixed(3)}x |{" "}
+                    {dicePreview.multiplier.toFixed(3)}x if {diceDirection.toUpperCase()} {dicePreview.threshold} |{" "}
                     {currencyFormatter.format(dicePreview.payout)}
-                  </p>
-                  <p>
-                    Win chance: {(dicePreview.winProbability * 100).toFixed(2)}% | House edge:{" "}
-                    {(STANDARD_HOUSE_EDGE * 100).toFixed(2)}%
                   </p>
                   {diceResult ? (
                     <p>
-                      <strong>{diceResult.outcome.toUpperCase()}</strong> | {diceResult.direction} {diceResult.threshold},
-                      roll {diceResult.roll} | payout {currencyFormatter.format(diceResult.payout)}
+                      <strong>{diceResult.outcome.toUpperCase()}</strong> | roll {diceResult.roll} | payout{" "}
+                      {currencyFormatter.format(diceResult.payout)}
                     </p>
                   ) : null}
                 </div>
-                <Button onClick={playDiceOverUnder} disabled={diceBusy || anyBusy}>
+                <Button className="dice-roll-btn" onClick={playDiceOverUnder} disabled={diceBusy || anyBusy}>
                   {diceBusy ? (
                     <>
                       <LoaderCircle className="size-4 animate-spin" />
@@ -1312,14 +1360,14 @@ function App() {
 
           <section className="feed-slide reel-mines">
             <Card className="reel-card">
-              <CardHeader>
+              <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2">
                   <Dice1 className="size-4 text-emerald-300" />
                   Mines
                 </CardTitle>
-                <CardDescription>Reveal safe tiles, then cash out before a bomb.</CardDescription>
+                <CardDescription className="text-xs">Swat flies, avoid mines, cash out fast.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3">
+              <CardContent className="grid gap-2">
                 <BetControls
                   value={minesStake}
                   onValueChange={(value) => {
@@ -1331,43 +1379,57 @@ function App() {
                   step={0.1}
                   quickBets={QUICK_BETS}
                   currency={currency}
+                  className="bet-controls-mines"
+                  showManualInput={false}
                   disabled={minesBusy || anyBusy || minesRound !== null}
                 />
-                <div className="grid gap-1.5">
-                  <label className="text-sm text-muted-foreground">Bombs (1-24)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={24}
-                    step="1"
-                    value={minesBombCount}
-                    onChange={(event) => {
-                      setMinesBombCount(event.target.value);
-                      setMinesResult(null);
-                    }}
-                    disabled={minesBusy || anyBusy || minesRound !== null}
-                  />
+                <div className="mines-bomb-compact">
+                  <p className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Bombs</p>
+                  <div className="mines-bomb-controls">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setMinesBombCountValue(minesBombCountValue - 1)}
+                      disabled={minesBusy || anyBusy || minesRound !== null}
+                    >
+                      -
+                    </Button>
+                    <span>{minesBombCountValue}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setMinesBombCountValue(minesBombCountValue + 1)}
+                      disabled={minesBusy || anyBusy || minesRound !== null}
+                    >
+                      +
+                    </Button>
+                    {[3, 5, 10].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className={`mines-bomb-chip ${minesBombCountValue === preset ? "mines-bomb-chip-active" : ""}`}
+                        onClick={() => setMinesBombCountValue(preset)}
+                        disabled={minesBusy || anyBusy || minesRound !== null}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className={`result-box ${minesResultToneClass}`}>
+                <div className={`result-box mines-result-box ${minesResultToneClass}`}>
                   {minesRound ? (
-                    <>
-                      <p>
-                        Live round: {minesRound.revealed.length}/{minesRound.totalTiles - minesRound.bombCount} safe
-                        picks | bombs {minesRound.bombCount}
-                      </p>
-                      <p>
-                        Current cashout: {minesLiveMultiplier.toFixed(3)}x |{" "}
-                        {currencyFormatter.format(minesCashoutPayout)}
-                      </p>
-                    </>
+                    <p>
+                      Live {minesRound.revealed.length}/{minesRound.totalTiles - minesRound.bombCount} safe | bombs{" "}
+                      {minesRound.bombCount} | cashout {minesLiveMultiplier.toFixed(3)}x (
+                      {currencyFormatter.format(minesCashoutPayout)})
+                    </p>
                   ) : (
-                    <>
-                      <p>
-                        First safe pick: {minesPreview.firstSafeMultiplier.toFixed(3)}x |{" "}
-                        {currencyFormatter.format(minesPreview.firstSafePayout)}
-                      </p>
-                      <p>Bombs: {minesPreview.bombCount} | House edge: {(MINES_HOUSE_EDGE * 100).toFixed(2)}%</p>
-                    </>
+                    <p>
+                      First safe hit {minesPreview.firstSafeMultiplier.toFixed(3)}x (
+                      {currencyFormatter.format(minesPreview.firstSafePayout)}) | bombs {minesPreview.bombCount}
+                    </p>
                   )}
                   {minesResult ? (
                     <p>
@@ -1376,34 +1438,18 @@ function App() {
                     </p>
                   ) : null}
                 </div>
-                <div className="mines-grid">
-                  {Array.from({ length: MINES_TOTAL_TILES }, (_, tile) => {
-                    const revealed = minesDisplayRevealed.includes(tile);
-                    const bomb = minesDisplayBombs.includes(tile);
-                    const exploded = minesDisplayExplodedAt === tile;
-                    const disabled = !minesRound || minesBusy || anyBusy || revealed;
-                    const tileClass = exploded
-                      ? "mines-tile mines-tile-exploded"
-                      : bomb
-                        ? "mines-tile mines-tile-bomb"
-                        : revealed
-                          ? "mines-tile mines-tile-safe"
-                          : "mines-tile mines-tile-hidden";
-                    const label = exploded ? "X" : bomb ? "B" : revealed ? "S" : String(tile + 1);
-
-                    return (
-                      <button
-                        key={tile}
-                        type="button"
-                        className={tileClass}
-                        onClick={() => revealMinesTile(tile)}
-                        disabled={disabled}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <MinesBugHuntArena
+                  key={minesRound?.roundId ?? minesResult?.roundId ?? "mines-idle"}
+                  active={Boolean(minesRound)}
+                  locked={minesBusy || anyBusy}
+                  totalTiles={MINES_TOTAL_TILES}
+                  bombCount={minesRound?.bombCount ?? minesPreview.bombCount}
+                  revealed={minesDisplayRevealed}
+                  bombs={minesDisplayBombs}
+                  explodedAt={minesDisplayExplodedAt}
+                  outcome={minesResult?.outcome ?? null}
+                  onReveal={revealMinesTile}
+                />
                 {!minesRound ? (
                   <Button onClick={startMinesRound} disabled={minesBusy || anyBusy}>
                     {minesBusy ? (

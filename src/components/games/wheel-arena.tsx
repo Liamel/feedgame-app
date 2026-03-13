@@ -1,6 +1,6 @@
 import { Application, useExtend, useTick } from "@pixi/react";
 import { Container, Graphics, Text } from "pixi.js";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface WheelArenaProps {
   spinning: boolean;
@@ -78,6 +78,30 @@ export function WheelArena({
   payout,
 }: WheelArenaProps) {
   useExtend({ Container, Graphics, Text });
+  const stageHostRef = useRef<HTMLDivElement | null>(null);
+  const [stageReady, setStageReady] = useState(
+    () => typeof window !== "undefined" && typeof window.IntersectionObserver === "undefined",
+  );
+
+  useEffect(() => {
+    const host = stageHostRef.current;
+    if (!host || stageReady || typeof window === "undefined" || typeof window.IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setStageReady(true);
+          observer.disconnect();
+        }
+      },
+      { root: null, rootMargin: "220px" },
+    );
+
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [stageReady]);
 
   const status: "ready" | "spinning" | "win" | "loss" = spinning
     ? "spinning"
@@ -89,16 +113,20 @@ export function WheelArena({
 
   return (
     <div className="wheel-arena-shell arena-shell">
-      <div className="wheel-arena-canvas">
-        <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
-          <WheelArenaScene
-            spinning={spinning}
-            segmentIndex={segmentIndex}
-            label={label}
-            outcome={outcome}
-            multiplier={multiplier}
-          />
-        </Application>
+      <div className="wheel-arena-canvas" ref={stageHostRef}>
+        {stageReady ? (
+          <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
+            <WheelArenaScene
+              spinning={spinning}
+              segmentIndex={segmentIndex}
+              label={label}
+              outcome={outcome}
+              multiplier={multiplier}
+            />
+          </Application>
+        ) : (
+          <div className="arena-canvas-fallback">WHEEL LOADING...</div>
+        )}
       </div>
       <div className="arena-hud arena-hud-wheel">
         <span className="arena-pill arena-pill-info">{label ? `LANDED ${label}` : "LANDED --"}</span>

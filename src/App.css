@@ -7,6 +7,52 @@
     linear-gradient(180deg, #080f18 0%, #0c1824 44%, #0e111f 100%);
 }
 
+.dice-screen-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  mix-blend-mode: screen;
+  animation: dice-screen-burst 560ms cubic-bezier(0.18, 0.84, 0.18, 1) forwards;
+}
+
+.dice-screen-flash-win {
+  background:
+    radial-gradient(120% 90% at 50% 50%, rgba(34, 197, 94, 0.54), transparent 72%),
+    radial-gradient(72% 46% at 50% 14%, rgba(74, 222, 128, 0.42), transparent 78%),
+    radial-gradient(84% 58% at 50% 88%, rgba(16, 185, 129, 0.35), transparent 82%);
+}
+
+.dice-screen-flash-loss {
+  background:
+    radial-gradient(120% 90% at 50% 50%, rgba(244, 63, 94, 0.52), transparent 72%),
+    radial-gradient(72% 46% at 50% 14%, rgba(251, 113, 133, 0.38), transparent 78%),
+    radial-gradient(84% 58% at 50% 88%, rgba(239, 68, 68, 0.34), transparent 82%);
+}
+
+@keyframes dice-screen-burst {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  42% {
+    opacity: 0.42;
+    transform: scale(1.01);
+  }
+  62% {
+    opacity: 0.84;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}
+
 .phone-shell {
   margin: 0 auto;
   max-width: 440px;
@@ -95,54 +141,98 @@
   box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.24);
 }
 
-.mines-grid {
+.mines-hunt-shell {
+  background: linear-gradient(180deg, rgba(6, 35, 28, 0.94), rgba(4, 23, 19, 0.98));
+}
+
+.mines-hunt-stage {
+  position: relative;
+}
+
+.mines-hunt-stage canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.mines-hit-grid {
+  position: absolute;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  gap: 7px;
 }
 
-.mines-tile {
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  min-height: 40px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+.mines-hit-btn {
+  border-radius: 10px;
+  border: 1px solid rgba(110, 231, 183, 0.12);
+  background: transparent;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
-.mines-tile:disabled {
+.mines-hit-btn:not(:disabled):hover {
+  border-color: rgba(110, 231, 183, 0.54);
+  box-shadow: inset 0 0 0 1px rgba(167, 243, 208, 0.3);
+  transform: translateY(-1px);
+}
+
+.mines-hit-btn:disabled {
   cursor: default;
 }
 
-.mines-tile-hidden {
-  background: rgba(15, 23, 42, 0.7);
-  color: #a7bad5;
+.mines-result-box {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  gap: 2px;
 }
 
-.mines-tile-hidden:not(:disabled):hover {
-  transform: translateY(-1px);
-  border-color: rgba(110, 231, 183, 0.68);
-  background: rgba(18, 43, 37, 0.8);
-  color: #d1fae5;
+.mines-bomb-compact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  background: rgba(8, 18, 30, 0.6);
+  padding: 7px 8px;
 }
 
-.mines-tile-safe {
-  border-color: rgba(74, 222, 128, 0.72);
-  background: rgba(11, 64, 40, 0.84);
-  color: #bbf7d0;
+.mines-bomb-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.mines-tile-bomb {
-  border-color: rgba(248, 113, 113, 0.72);
-  background: rgba(95, 25, 25, 0.84);
-  color: #fecaca;
+.mines-bomb-controls span {
+  min-width: 32px;
+  text-align: center;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  color: #f8fafc;
 }
 
-.mines-tile-exploded {
-  border-color: rgba(248, 113, 113, 0.84);
-  background: linear-gradient(180deg, rgba(140, 28, 28, 0.88), rgba(107, 24, 24, 0.92));
-  color: #fff1f2;
+.mines-bomb-controls > [data-slot="button"] {
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.mines-bomb-chip {
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 999px;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.mines-bomb-chip-active {
+  border-color: rgba(16, 185, 129, 0.74);
+  color: #a7f3d0;
+  background: rgba(6, 78, 59, 0.7);
 }
 
 .reel-coin {
@@ -210,18 +300,201 @@
   box-shadow: 0 14px 26px rgba(2, 6, 23, 0.42);
 }
 
+.arena-canvas-fallback {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #bfdbfe;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background:
+    radial-gradient(120px 70px at 20% 20%, rgba(125, 211, 252, 0.2), transparent 72%),
+    radial-gradient(120px 70px at 80% 30%, rgba(251, 113, 133, 0.2), transparent 70%),
+    rgba(10, 18, 30, 0.82);
+}
+
 .dice-arena-shell {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(2, 6, 23, 0.92));
 }
 
 .dice-arena-canvas {
-  height: 214px;
+  height: 392px;
 }
 
 .dice-arena-canvas canvas {
   width: 100% !important;
   height: 100% !important;
   display: block;
+}
+
+@media (max-width: 420px) {
+  .dice-arena-canvas {
+    height: min(57dvh, 392px);
+  }
+}
+
+.dice-direction-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dice-direction-btn {
+  border-radius: 11px;
+  min-height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background:
+    radial-gradient(120px 40px at 50% -22%, rgba(45, 212, 191, 0.18), transparent 72%),
+    rgba(10, 20, 34, 0.75);
+  color: #cbd5e1;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  transition: transform 130ms ease, box-shadow 130ms ease, border-color 130ms ease;
+}
+
+.dice-direction-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 14px rgba(2, 6, 23, 0.28);
+}
+
+.dice-direction-btn-active {
+  border-color: rgba(45, 212, 191, 0.82);
+  color: #d9faff;
+  background:
+    linear-gradient(170deg, rgba(10, 148, 157, 0.78), rgba(13, 84, 141, 0.66)),
+    rgba(12, 28, 44, 0.84);
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.32);
+}
+
+.dice-threshold-controls {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: rgba(8, 19, 33, 0.72);
+  padding: 7px 10px;
+  display: grid;
+  gap: 5px;
+}
+
+.dice-threshold-head {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #94a9c4;
+}
+
+.dice-threshold-head p {
+  margin: 0;
+}
+
+.dice-threshold-head p:last-child {
+  justify-self: end;
+}
+
+.dice-threshold-value {
+  color: #e0f2fe;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+}
+
+.dice-threshold-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 232, 249, 0.36);
+  background:
+    linear-gradient(90deg, rgba(14, 165, 233, 0.68), rgba(45, 212, 191, 0.5), rgba(139, 92, 246, 0.52)),
+    rgba(15, 23, 42, 0.82);
+}
+
+.dice-threshold-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: radial-gradient(circle at 32% 32%, #f0f9ff, #06b6d4 70%);
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
+  cursor: pointer;
+}
+
+.dice-threshold-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: radial-gradient(circle at 32% 32%, #f0f9ff, #06b6d4 70%);
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
+  cursor: pointer;
+}
+
+.dice-threshold-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: #89a1bf;
+}
+
+.dice-result-box {
+  padding: 7px 10px;
+  font-size: 0.76rem;
+  line-height: 1.28;
+  gap: 2px;
+}
+
+.bet-controls-dice {
+  padding: 8px 10px;
+  gap: 7px;
+}
+
+.bet-controls-dice .bet-controls-head {
+  font-size: 0.66rem;
+}
+
+.bet-controls-dice .bet-controls-value {
+  font-size: 0.74rem;
+}
+
+.bet-controls-dice .bet-chip {
+  min-height: 30px;
+}
+
+.bet-controls-dice .bet-range {
+  height: 9px;
+}
+
+.dice-roll-btn {
+  min-height: 42px;
+  border: 1px solid rgba(45, 212, 191, 0.58);
+  background:
+    radial-gradient(180px 72px at 50% -20%, rgba(103, 232, 249, 0.36), transparent 74%),
+    linear-gradient(180deg, rgba(3, 105, 161, 0.9), rgba(6, 78, 134, 0.88));
+  color: #ecfeff;
+  text-shadow: 0 0 12px rgba(34, 211, 238, 0.44);
+  box-shadow:
+    0 12px 20px rgba(2, 6, 23, 0.36),
+    inset 0 0 0 1px rgba(186, 230, 253, 0.2);
+  transition: transform 130ms ease, box-shadow 130ms ease, filter 130ms ease;
+}
+
+.dice-roll-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: saturate(1.08);
+}
+
+.dice-roll-btn:disabled {
+  filter: grayscale(0.08);
 }
 
 .arena-hud {
@@ -234,6 +507,14 @@
 
 .arena-hud-dice {
   background: linear-gradient(180deg, rgba(8, 20, 35, 0.92), rgba(5, 13, 25, 0.96));
+  padding: 7px 8px;
+  gap: 5px;
+}
+
+.arena-hud-dice .arena-pill {
+  font-size: 0.58rem;
+  padding: 4px 8px;
+  letter-spacing: 0.07em;
 }
 
 .arena-hud-coin {
@@ -246,6 +527,10 @@
 
 .arena-hud-wheel {
   background: linear-gradient(180deg, rgba(45, 12, 24, 0.92), rgba(28, 9, 18, 0.96));
+}
+
+.arena-hud-mines {
+  background: linear-gradient(180deg, rgba(7, 44, 29, 0.92), rgba(6, 30, 22, 0.96));
 }
 
 .arena-pill {
@@ -306,12 +591,16 @@
 }
 
 .bet-controls {
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 10px;
-  background: rgba(12, 22, 36, 0.65);
-  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background:
+    radial-gradient(120px 70px at 12% 12%, rgba(56, 189, 248, 0.18), transparent 72%),
+    radial-gradient(140px 80px at 86% 16%, rgba(251, 113, 133, 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(11, 24, 38, 0.86), rgba(7, 15, 27, 0.92));
+  box-shadow: 0 14px 24px rgba(2, 6, 23, 0.32), inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+  padding: 12px;
   display: grid;
-  gap: 10px;
+  gap: 11px;
 }
 
 .bet-controls-head {
@@ -319,31 +608,96 @@
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: #9caec8;
+  color: #94a9c4;
 }
 
 .bet-controls-value {
-  color: #f8fafc;
+  color: #fef3c7;
   font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.34);
 }
 
 .bet-controls-chips {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  gap: 7px;
 }
 
 .bet-controls-chips button {
   min-width: 0;
-  padding-inline: 0;
+  padding-inline: 8px;
+}
+
+.bet-chip {
+  border: 1px solid hsla(var(--chip-hue), 95%, 72%, 0.6);
+  border-radius: 10px;
+  background:
+    linear-gradient(160deg, hsla(var(--chip-hue), 85%, 62%, 0.42), hsla(var(--chip-hue), 78%, 36%, 0.26)),
+    rgba(8, 18, 30, 0.8);
+  color: #dbeafe;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  min-height: 34px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+
+.bet-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 8px 14px rgba(2, 6, 23, 0.26),
+    0 0 16px hsla(var(--chip-hue), 95%, 66%, 0.3);
+}
+
+.bet-chip-active {
+  color: #fff7ed;
+  border-color: hsla(var(--chip-hue), 100%, 78%, 0.95);
+  background:
+    linear-gradient(160deg, hsla(var(--chip-hue), 95%, 63%, 0.68), hsla(var(--chip-hue), 82%, 42%, 0.5)),
+    rgba(8, 18, 30, 0.84);
+  box-shadow:
+    0 0 0 1px hsla(var(--chip-hue), 96%, 74%, 0.52),
+    0 8px 16px rgba(2, 6, 23, 0.3),
+    0 0 20px hsla(var(--chip-hue), 100%, 74%, 0.36);
 }
 
 .bet-range {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
-  accent-color: #38bdf8;
+  height: 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  background:
+    linear-gradient(90deg, rgba(14, 165, 233, 0.62), rgba(251, 113, 133, 0.52), rgba(74, 222, 128, 0.58)),
+    rgba(15, 23, 42, 0.82);
+}
+
+.bet-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  background: radial-gradient(circle at 30% 30%, #fef9c3, #f59e0b 70%);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.5);
+  cursor: pointer;
+}
+
+.bet-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  background: radial-gradient(circle at 30% 30%, #fef9c3, #f59e0b 70%);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.5);
+  cursor: pointer;
 }
 
 .bet-controls-footer {
@@ -355,10 +709,39 @@
 
 .bet-controls-footer p {
   margin: 0;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #8ea0b8;
+  color: #95aac5;
+}
+
+.bet-controls-compact-range {
+  margin: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #89a1bf;
+}
+
+.bet-controls-mines {
+  padding: 9px 10px;
+  gap: 8px;
+}
+
+.bet-controls-mines .bet-controls-head {
+  font-size: 0.66rem;
+}
+
+.bet-controls-mines .bet-controls-value {
+  font-size: 0.74rem;
+}
+
+.bet-controls-mines .bet-chip {
+  min-height: 30px;
+}
+
+.bet-controls-mines .bet-range {
+  height: 9px;
 }
 
 .coin-arena-shell {

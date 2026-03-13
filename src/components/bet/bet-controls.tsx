@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import type { CSSProperties } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ interface BetControlsProps {
   disabled?: boolean;
   currency?: string;
   className?: string;
+  showManualInput?: boolean;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -41,6 +42,7 @@ export function BetControls({
   disabled = false,
   currency,
   className,
+  showManualInput = true,
 }: BetControlsProps) {
   const parsed = Number(value);
   const safeValue = Number.isFinite(parsed) ? clamp(parsed, min, max) : min;
@@ -57,19 +59,22 @@ export function BetControls({
       </div>
 
       <div className="bet-controls-chips">
-        {validQuickBets.map((bet) => {
+        {validQuickBets.map((bet, index) => {
           const selected = Math.abs(safeValue - bet) < step / 2;
+          const chipStyle = {
+            "--chip-hue": String((index * 43 + 172) % 360),
+          } as CSSProperties;
           return (
-            <Button
+            <button
               key={bet}
               type="button"
-              size="sm"
-              variant={selected ? "default" : "secondary"}
+              className={cn("bet-chip", selected && "bet-chip-active")}
+              style={chipStyle}
               disabled={disabled}
               onClick={() => onValueChange(formatStake(clamp(bet, min, max), step))}
             >
               {bet}
-            </Button>
+            </button>
           );
         })}
       </div>
@@ -85,20 +90,26 @@ export function BetControls({
         onChange={(event) => onValueChange(formatStake(Number(event.target.value), step))}
       />
 
-      <div className="bet-controls-footer">
-        <Input
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onValueChange(event.target.value)}
-        />
-        <p>
+      {showManualInput ? (
+        <div className="bet-controls-footer">
+          <Input
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            disabled={disabled}
+            onChange={(event) => onValueChange(event.target.value)}
+          />
+          <p>
+            min {min} / max {max}
+          </p>
+        </div>
+      ) : (
+        <p className="bet-controls-compact-range">
           min {min} / max {max}
         </p>
-      </div>
+      )}
     </div>
   );
 }
