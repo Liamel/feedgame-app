@@ -8,6 +8,32 @@ import {
   emitParticleBurst,
   updateParticlePool,
 } from "./shared/particles";
+import {
+  addScreenShakeTrauma,
+  createAmbientField,
+  createRingPulsePool,
+  createScreenShakeState,
+  drawAmbientField,
+  drawLightBeams,
+  drawRingPulsePool,
+  drawVignetteFrame,
+  emitRingPulseBurst,
+  updateRingPulsePool,
+  updateScreenShake,
+} from "./shared/premium-vfx";
+import {
+  type ArenaQualityTier,
+  scaleAlphaByQuality,
+  scaleCountByQuality,
+  useArenaQuality,
+} from "./shared/perf-quality";
+import {
+  createRewardSpritePool,
+  destroyRewardSpritePool,
+  emitRewardSpriteBurst,
+  updateRewardSpritePool,
+  type RewardSpritePool,
+} from "./shared/reward-sprites";
 import { useArenaVisibility } from "./shared/use-arena-visibility";
 
 interface WheelArenaProps {
@@ -88,15 +114,18 @@ export function WheelArena({
 }: WheelArenaProps) {
   useExtend({ Container, Graphics, Text });
   const { hostRef, isNearViewport, stageReady } = useArenaVisibility();
+  const qualityProfile = useArenaQuality({ active: isNearViewport });
   const previousSpinningRef = useRef(spinning);
 
   useEffect(() => {
     if (spinning && !previousSpinningRef.current) {
       playGameSfx("wheel-spin");
+      playGameSfx("anticipation-rise", { intensity: 0.88 });
     }
     if (!spinning && previousSpinningRef.current && outcome) {
       playGameSfx("wheel-stop");
       if (outcome === "win") {
+        playGameSfx("reward-burst", { intensity: 1.1 });
         playGameSfx("reward-pop", { intensity: 1.14 });
       }
     }
@@ -123,6 +152,7 @@ export function WheelArena({
               label={label}
               outcome={outcome}
               multiplier={multiplier}
+              qualityTier={qualityProfile.tier}
             />
           </Application>
         ) : (
@@ -154,6 +184,7 @@ interface WheelArenaSceneProps {
   label: string | null;
   outcome: "win" | "loss" | null;
   multiplier: number | null;
+  qualityTier: ArenaQualityTier;
 }
 
 function WheelArenaScene({
@@ -163,6 +194,7 @@ function WheelArenaScene({
   label,
   outcome,
   multiplier,
+  qualityTier,
 }: WheelArenaSceneProps) {
   const [frame, setFrame] = useState<WheelFrame>({
     rotation: 0,
@@ -173,8 +205,44 @@ function WheelArenaScene({
     drift: 0,
   });
   const previousSpinningRef = useRef(spinning);
+  const sceneLayerRef = useRef<Container | null>(null);
+  const rewardSpriteLayerRef = useRef<Container | null>(null);
+  const rewardSpritePoolRef = useRef<RewardSpritePool | null>(null);
   const particlePoolRef = useRef(createParticlePool(120));
+  const ringPulsePoolRef = useRef(createRingPulsePool(28));
+  const screenShakeRef = useRef(createScreenShakeState());
   const impactBoostRef = useRef(0);
+  const frameCommitMsRef = useRef(0);
+  const ambientField = useMemo(
+    () =>
+      createAmbientField({
+        seed: 8231,
+        count: scaleCountByQuality(34, qualityTier, 20),
+        width: STAGE_WIDTH,
+        height: STAGE_HEIGHT,
+        colors: [0xf8fafc, 0xc4b5fd, 0x93c5fd, 0xfda4af],
+      }),
+    [qualityTier],
+  );
+
+  useEffect(() => {
+    const layer = rewardSpriteLayerRef.current;
+    if (!layer) {
+      return;
+    }
+    const pool = createRewardSpritePool(
+      layer,
+      scaleCountByQuality(36, qualityTier, 20),
+      ["coin", "diamond", "shard"],
+    );
+    rewardSpritePoolRef.current = pool;
+    return () => {
+      destroyRewardSpritePool(pool);
+      if (rewardSpritePoolRef.current === pool) {
+        rewardSpritePoolRef.current = null;
+      }
+    };
+  }, [qualityTier]);
 
   const wheelLayout = useMemo<WheelLayout[]>(() => {
     const spans = SEGMENTS.map((segment) => (segment.weight / TOTAL_WEIGHT) * TAU);
@@ -208,7 +276,7 @@ function WheelArenaScene({
       emitParticleBurst(particlePoolRef.current, {
         x,
         y,
-        count: outcome === "win" ? 32 : 18,
+        count: scaleCountByQuality(outcome === "win" ? 32 : 18, qualityTier, 11),
         colors:
           outcome === "win"
             ? [0x86efac, 0xfef08a, 0xf8fafc]
@@ -221,10 +289,36 @@ function WheelArenaScene({
         lifeMaxMs: 820,
         gravity: 0.1,
       });
+      emitRingPulseBurst(ringPulsePoolRef.current, {
+        x,
+        y,
+        count: scaleCountByQuality(outcome === "win" ? 5 : 3, qualityTier, 2),
+        colors:
+          outcome === "win"
+            ? [0x86efac, 0xfef08a, 0xc4b5fd]
+            : [0xfda4af, 0xfca5a5, 0xfef08a],
+        radiusMin: 24,
+        radiusMax: 84,
+        lifeMinMs: 280,
+        lifeMaxMs: 760,
+      });
+      if (rewardSpritePoolRef.current) {
+        emitRewardSpriteBurst(rewardSpritePoolRef.current, {
+          x,
+          y,
+          count: scaleCountByQuality(outcome === "win" ? 16 : 8, qualityTier, 5),
+          speedMin: 2.1,
+          speedMax: outcome === "win" ? 9.2 : 6.2,
+          textureIds: outcome === "win" ? ["coin", "diamond"] : ["diamond", "shard"],
+          gravity: 0.1,
+        });
+      }
       impactBoostRef.current = 1;
+      addScreenShakeTrauma(screenShakeRef.current, outcome === "win" ? 0.58 : 0.42);
+      playGameSfx("impact-hit", { intensity: outcome === "win" ? 1 : 0.86 });
     }
     previousSpinningRef.current = spinning;
-  }, [frame.rotation, outcome, segmentIndex, spinning, wheelLayout]);
+  }, [frame.rotation, outcome, qualityTier, segmentIndex, spinning, wheelLayout]);
 
   useTick((ticker) => {
     if (!animate) {
@@ -233,6 +327,25 @@ function WheelArenaScene({
     const step = Math.min(2.4, ticker.deltaMS / 16.666);
     const justStartedSpinning = spinning && !previousSpinningRef.current;
     updateParticlePool(particlePoolRef.current, ticker.deltaMS);
+    updateRingPulsePool(ringPulsePoolRef.current, ticker.deltaMS);
+    if (rewardSpritePoolRef.current) {
+      updateRewardSpritePool(rewardSpritePoolRef.current, ticker.deltaMS);
+    }
+    updateScreenShake(screenShakeRef.current, ticker.deltaMS);
+    if (sceneLayerRef.current) {
+      sceneLayerRef.current.position.set(
+        screenShakeRef.current.x,
+        screenShakeRef.current.y,
+      );
+    }
+    frameCommitMsRef.current += ticker.deltaMS;
+    const commitIntervalMs =
+      qualityTier === "high" ? 16 : qualityTier === "medium" ? 22 : 32;
+    if (frameCommitMsRef.current < commitIntervalMs) {
+      return;
+    }
+    const commitDelta = frameCommitMsRef.current;
+    frameCommitMsRef.current = 0;
 
     setFrame((previous) => {
       let rotation = previous.rotation;
@@ -240,9 +353,9 @@ function WheelArenaScene({
         ? 0.34 + Math.random() * 0.08
         : previous.velocity;
       let impact = previous.impact;
-      const pulse = previous.pulse + ticker.deltaMS * 0.012;
-      const glow = previous.glow + ticker.deltaMS * 0.02;
-      const drift = previous.drift + ticker.deltaMS * 0.003;
+      const pulse = previous.pulse + commitDelta * 0.012;
+      const glow = previous.glow + commitDelta * 0.02;
+      const drift = previous.drift + commitDelta * 0.003;
 
       if (impactBoostRef.current > 0) {
         impact = Math.max(impact, impactBoostRef.current);
@@ -317,6 +430,17 @@ function WheelArenaScene({
       graphics.circle(STAGE_WIDTH - 56, 52, 92);
       graphics.fill();
 
+      drawLightBeams(
+        graphics,
+        frame.glow * (spinning ? 1.45 : 0.95),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+        [accent, 0xfda4af, 0x93c5fd],
+        scaleAlphaByQuality(spinning ? 1 : 0.74, qualityTier),
+      );
+      drawAmbientField(graphics, ambientField, frame.drift * 0.24, STAGE_WIDTH, STAGE_HEIGHT);
+      drawVignetteFrame(graphics, STAGE_WIDTH, STAGE_HEIGHT, 0.08 + frame.impact * 0.08);
+
       for (let index = 0; index < 18; index += 1) {
         const x =
           (index * 29 + frame.drift * (index % 3 === 0 ? 24 : 12)) % STAGE_WIDTH;
@@ -329,7 +453,7 @@ function WheelArenaScene({
         graphics.fill();
       }
     },
-    [frame.drift],
+    [accent, ambientField, frame.drift, frame.glow, frame.impact, qualityTier, spinning],
   );
 
   const drawPulse = useCallback(
@@ -437,56 +561,65 @@ function WheelArenaScene({
     drawParticlePool(graphics, particlePoolRef.current);
   }, []);
 
+  const drawRingBursts = useCallback((graphics: Graphics) => {
+    graphics.clear();
+    drawRingPulsePool(graphics, ringPulsePoolRef.current);
+  }, []);
+
   return (
     <>
       <pixiGraphics draw={drawBackdrop} />
-      <pixiGraphics draw={drawPulse} />
-      <pixiContainer x={CENTER_X} y={CENTER_Y} scale={1 + frame.impact * 0.02}>
-        <pixiGraphics draw={drawWheel} />
-        {labelPositions.map((entry) => (
+      <pixiGraphics draw={drawRingBursts} />
+      <pixiContainer ref={sceneLayerRef}>
+        <pixiGraphics draw={drawPulse} />
+        <pixiContainer x={CENTER_X} y={CENTER_Y} scale={1 + frame.impact * 0.02}>
+          <pixiGraphics draw={drawWheel} />
+          {labelPositions.map((entry) => (
+            <pixiText
+              key={entry.key}
+              x={entry.x}
+              y={entry.y}
+              anchor={0.5}
+              text={entry.text}
+              style={{
+                fill: "#f8fafc",
+                fontFamily: "Space Grotesk",
+                fontWeight: "700",
+                fontSize: 12,
+              }}
+            />
+          ))}
+          <pixiGraphics draw={drawCenter} />
           <pixiText
-            key={entry.key}
-            x={entry.x}
-            y={entry.y}
+            x={0}
+            y={-7}
             anchor={0.5}
-            text={entry.text}
+            text={centerMain}
             style={{
               fill: "#f8fafc",
               fontFamily: "Space Grotesk",
-              fontWeight: "700",
-              fontSize: 12,
+              fontWeight: "800",
+              fontSize: 13 + frame.impact * 1.4,
+              align: "center",
             }}
           />
-        ))}
-        <pixiGraphics draw={drawCenter} />
-        <pixiText
-          x={0}
-          y={-7}
-          anchor={0.5}
-          text={centerMain}
-          style={{
-            fill: "#f8fafc",
-            fontFamily: "Space Grotesk",
-            fontWeight: "800",
-            fontSize: 13 + frame.impact * 1.4,
-            align: "center",
-          }}
-        />
-        <pixiText
-          x={0}
-          y={13}
-          anchor={0.5}
-          text={centerSub}
-          style={{
-            fill: "#cbd5e1",
-            fontFamily: "IBM Plex Mono",
-            fontWeight: "600",
-            fontSize: 11,
-            align: "center",
-          }}
-        />
+          <pixiText
+            x={0}
+            y={13}
+            anchor={0.5}
+            text={centerSub}
+            style={{
+              fill: "#cbd5e1",
+              fontFamily: "IBM Plex Mono",
+              fontWeight: "600",
+              fontSize: 11,
+              align: "center",
+            }}
+          />
+        </pixiContainer>
+        <pixiGraphics draw={drawPointer} />
       </pixiContainer>
-      <pixiGraphics draw={drawPointer} />
+      <pixiContainer ref={rewardSpriteLayerRef} />
       <pixiGraphics draw={drawParticles} />
     </>
   );

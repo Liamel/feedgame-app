@@ -8,6 +8,31 @@ import {
   emitParticleBurst,
   updateParticlePool,
 } from "./shared/particles";
+import {
+  addScreenShakeTrauma,
+  createAmbientField,
+  createRingPulsePool,
+  createScreenShakeState,
+  drawAmbientField,
+  drawLightBeams,
+  drawRingPulsePool,
+  drawVignetteFrame,
+  emitRingPulseBurst,
+  updateRingPulsePool,
+  updateScreenShake,
+} from "./shared/premium-vfx";
+import {
+  scaleAlphaByQuality,
+  scaleCountByQuality,
+  useArenaQuality,
+} from "./shared/perf-quality";
+import {
+  createRewardSpritePool,
+  destroyRewardSpritePool,
+  emitRewardSpriteBurst,
+  updateRewardSpritePool,
+  type RewardSpritePool,
+} from "./shared/reward-sprites";
 import { useArenaVisibility } from "./shared/use-arena-visibility";
 
 interface MinesBugHuntArenaProps {
@@ -77,15 +102,53 @@ export function MinesBugHuntArena({
 }: MinesBugHuntArenaProps) {
   useExtend({ Container, Graphics, Text });
   const { hostRef, isNearViewport, stageReady } = useArenaVisibility();
+  const qualityProfile = useArenaQuality({ active: isNearViewport });
   const [motion, setMotion] = useState<MotionState>({
     phase: 0,
     flash: 0,
   });
   const [strike, setStrike] = useState<StrikeState | null>(null);
 
+  const sceneLayerRef = useRef<Container | null>(null);
+  const rewardSpriteLayerRef = useRef<Container | null>(null);
+  const rewardSpritePoolRef = useRef<RewardSpritePool | null>(null);
   const previousRevealedRef = useRef<number[]>(revealed);
+  const previousOutcomeRef = useRef<"win" | "loss" | null>(outcome);
   const pendingFlashRef = useRef(0);
+  const motionCommitMsRef = useRef(0);
   const particlePoolRef = useRef(createParticlePool(128));
+  const ringPulsePoolRef = useRef(createRingPulsePool(32));
+  const screenShakeRef = useRef(createScreenShakeState());
+  const ambientField = useMemo(
+    () =>
+      createAmbientField({
+        seed: 5417,
+        count: scaleCountByQuality(42, qualityProfile.tier, 24),
+        width: STAGE_WIDTH,
+        height: STAGE_HEIGHT,
+        colors: [0xd1fae5, 0x99f6e4, 0xfef08a, 0xfda4af],
+      }),
+    [qualityProfile.tier],
+  );
+
+  useEffect(() => {
+    const layer = rewardSpriteLayerRef.current;
+    if (!layer) {
+      return;
+    }
+    const pool = createRewardSpritePool(
+      layer,
+      scaleCountByQuality(36, qualityProfile.tier, 20),
+      ["coin", "diamond", "shard"],
+    );
+    rewardSpritePoolRef.current = pool;
+    return () => {
+      destroyRewardSpritePool(pool);
+      if (rewardSpritePoolRef.current === pool) {
+        rewardSpritePoolRef.current = null;
+      }
+    };
+  }, [qualityProfile.tier]);
 
   const revealedSet = useMemo(() => new Set(revealed), [revealed]);
   const bombSet = useMemo(() => new Set(bombs), [bombs]);
@@ -129,7 +192,7 @@ export function MinesBugHuntArena({
           emitParticleBurst(particlePoolRef.current, {
             x: target.centerX,
             y: target.centerY,
-            count: 42,
+            count: scaleCountByQuality(42, qualityProfile.tier, 20),
             colors: [0xfda4af, 0xfdba74, 0xfef2f2],
             speedMin: 2.6,
             speedMax: 13,
@@ -139,6 +202,29 @@ export function MinesBugHuntArena({
             radiusMax: 5.2,
             gravity: 0.11,
           });
+          emitRingPulseBurst(ringPulsePoolRef.current, {
+            x: target.centerX,
+            y: target.centerY,
+            count: scaleCountByQuality(5, qualityProfile.tier, 2),
+            colors: [0xfdba74, 0xfda4af, 0xfef2f2],
+            radiusMin: 20,
+            radiusMax: 86,
+            lifeMinMs: 280,
+            lifeMaxMs: 820,
+          });
+          if (rewardSpritePoolRef.current) {
+            emitRewardSpriteBurst(rewardSpritePoolRef.current, {
+              x: target.centerX,
+              y: target.centerY,
+              count: scaleCountByQuality(16, qualityProfile.tier, 6),
+              speedMin: 2.1,
+              speedMax: 8.6,
+              textureIds: ["shard", "diamond"],
+              gravity: 0.12,
+            });
+          }
+          addScreenShakeTrauma(screenShakeRef.current, 0.62);
+          playGameSfx("impact-hit", { intensity: 1.04 });
         }
       } else {
         playGameSfx("mines-safe");
@@ -147,7 +233,7 @@ export function MinesBugHuntArena({
           emitParticleBurst(particlePoolRef.current, {
             x: target.centerX,
             y: target.centerY,
-            count: 16,
+            count: scaleCountByQuality(16, qualityProfile.tier, 8),
             colors: [0x86efac, 0xfef08a, 0xf8fafc],
             speedMin: 2.2,
             speedMax: 7.4,
@@ -157,11 +243,54 @@ export function MinesBugHuntArena({
             radiusMax: 3.2,
             gravity: 0.08,
           });
+          emitRingPulseBurst(ringPulsePoolRef.current, {
+            x: target.centerX,
+            y: target.centerY,
+            count: scaleCountByQuality(2, qualityProfile.tier, 1),
+            colors: [0x86efac, 0xfef08a, 0xf8fafc],
+            radiusMin: 16,
+            radiusMax: 44,
+            lifeMinMs: 220,
+            lifeMaxMs: 560,
+          });
+          if (rewardSpritePoolRef.current) {
+            emitRewardSpriteBurst(rewardSpritePoolRef.current, {
+              x: target.centerX,
+              y: target.centerY,
+              count: scaleCountByQuality(8, qualityProfile.tier, 3),
+              speedMin: 1.6,
+              speedMax: 5.8,
+              textureIds: ["coin", "diamond"],
+              gravity: 0.08,
+            });
+          }
+          addScreenShakeTrauma(screenShakeRef.current, 0.22);
+          playGameSfx("impact-hit", { intensity: 0.62 });
         }
       }
     }
     previousRevealedRef.current = revealed;
-  }, [explodedAt, revealed, tileGeometry]);
+  }, [explodedAt, qualityProfile.tier, revealed, tileGeometry]);
+
+  useEffect(() => {
+    if (outcome === "win" && previousOutcomeRef.current !== "win") {
+      playGameSfx("reward-burst", { intensity: 1.1 });
+      playGameSfx("reward-pop", { intensity: 0.96 });
+      if (rewardSpritePoolRef.current) {
+        emitRewardSpriteBurst(rewardSpritePoolRef.current, {
+          x: STAGE_WIDTH / 2,
+          y: STAGE_HEIGHT * 0.42,
+          count: scaleCountByQuality(20, qualityProfile.tier, 10),
+          speedMin: 2,
+          speedMax: 7.2,
+          textureIds: ["coin", "diamond"],
+          gravity: 0.07,
+        });
+      }
+      addScreenShakeTrauma(screenShakeRef.current, 0.28);
+    }
+    previousOutcomeRef.current = outcome;
+  }, [outcome, qualityProfile.tier]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !stageReady || !isNearViewport) {
@@ -175,15 +304,32 @@ export function MinesBugHuntArena({
       const delta = Math.min(34, now - lastTime);
       lastTime = now;
       updateParticlePool(particlePoolRef.current, delta);
-
-      setMotion((previous) => {
-        const boostedFlash = Math.max(previous.flash, pendingFlashRef.current);
-        pendingFlashRef.current = 0;
-        return {
-          phase: previous.phase + delta * 0.028,
-          flash: Math.max(0, boostedFlash - delta * 0.0019),
-        };
-      });
+      updateRingPulsePool(ringPulsePoolRef.current, delta);
+      if (rewardSpritePoolRef.current) {
+        updateRewardSpritePool(rewardSpritePoolRef.current, delta);
+      }
+      updateScreenShake(screenShakeRef.current, delta);
+      if (sceneLayerRef.current) {
+        sceneLayerRef.current.position.set(
+          screenShakeRef.current.x,
+          screenShakeRef.current.y,
+        );
+      }
+      motionCommitMsRef.current += delta;
+      const commitIntervalMs =
+        qualityProfile.tier === "high" ? 16 : qualityProfile.tier === "medium" ? 22 : 32;
+      if (motionCommitMsRef.current >= commitIntervalMs) {
+        const commitDelta = motionCommitMsRef.current;
+        motionCommitMsRef.current = 0;
+        setMotion((previous) => {
+          const boostedFlash = Math.max(previous.flash, pendingFlashRef.current);
+          pendingFlashRef.current = 0;
+          return {
+            phase: previous.phase + commitDelta * 0.028,
+            flash: Math.max(0, boostedFlash - commitDelta * 0.0019),
+          };
+        });
+      }
 
       setStrike((current) => {
         if (!current) {
@@ -204,7 +350,7 @@ export function MinesBugHuntArena({
 
     rafId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(rafId);
-  }, [isNearViewport, stageReady]);
+  }, [isNearViewport, qualityProfile.tier, stageReady]);
 
   const drawBackdrop = useCallback(
     (graphics: Graphics) => {
@@ -221,6 +367,17 @@ export function MinesBugHuntArena({
       graphics.circle(STAGE_WIDTH - 56, 58, 100);
       graphics.fill();
 
+      drawLightBeams(
+        graphics,
+        motion.phase * (active ? 0.45 : 0.24),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+        [0x34d399, 0x10b981, 0xfef08a],
+        scaleAlphaByQuality(active ? 0.94 : 0.64, qualityProfile.tier),
+      );
+      drawAmbientField(graphics, ambientField, motion.phase * 0.08, STAGE_WIDTH, STAGE_HEIGHT);
+      drawVignetteFrame(graphics, STAGE_WIDTH, STAGE_HEIGHT, 0.1 + motion.flash * 0.1);
+
       if (motion.flash > 0) {
         graphics.setFillStyle({
           color: explodedAt !== null ? 0xf97316 : 0x10b981,
@@ -230,7 +387,7 @@ export function MinesBugHuntArena({
         graphics.fill();
       }
     },
-    [explodedAt, motion.flash],
+    [active, ambientField, explodedAt, motion.flash, motion.phase, qualityProfile.tier],
   );
 
   const drawGrid = useCallback(
@@ -384,6 +541,11 @@ export function MinesBugHuntArena({
     drawParticlePool(graphics, particlePoolRef.current);
   }, []);
 
+  const drawRingBursts = useCallback((graphics: Graphics) => {
+    graphics.clear();
+    drawRingPulsePool(graphics, ringPulsePoolRef.current);
+  }, []);
+
   const handleReveal = useCallback(
     (tile: number) => {
       if (!active || locked || revealedSet.has(tile) || strike !== null) {
@@ -402,8 +564,12 @@ export function MinesBugHuntArena({
         {stageReady ? (
           <Application width={STAGE_WIDTH} height={STAGE_HEIGHT} antialias backgroundAlpha={0}>
             <pixiGraphics draw={drawBackdrop} />
-            <pixiGraphics draw={drawGrid} />
-            <pixiGraphics draw={drawStrike} />
+            <pixiGraphics draw={drawRingBursts} />
+            <pixiContainer ref={sceneLayerRef}>
+              <pixiGraphics draw={drawGrid} />
+              <pixiGraphics draw={drawStrike} />
+            </pixiContainer>
+            <pixiContainer ref={rewardSpriteLayerRef} />
             <pixiGraphics draw={drawParticles} />
             <pixiText
               x={16}

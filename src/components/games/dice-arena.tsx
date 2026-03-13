@@ -8,6 +8,32 @@ import {
   emitParticleBurst,
   updateParticlePool,
 } from "./shared/particles";
+import {
+  addScreenShakeTrauma,
+  createAmbientField,
+  createRingPulsePool,
+  createScreenShakeState,
+  drawAmbientField,
+  drawLightBeams,
+  drawRingPulsePool,
+  drawVignetteFrame,
+  emitRingPulseBurst,
+  updateRingPulsePool,
+  updateScreenShake,
+} from "./shared/premium-vfx";
+import {
+  type ArenaQualityTier,
+  scaleAlphaByQuality,
+  scaleCountByQuality,
+  useArenaQuality,
+} from "./shared/perf-quality";
+import {
+  createRewardSpritePool,
+  destroyRewardSpritePool,
+  emitRewardSpriteBurst,
+  updateRewardSpritePool,
+  type RewardSpritePool,
+} from "./shared/reward-sprites";
 import { useArenaVisibility } from "./shared/use-arena-visibility";
 
 interface DiceArenaProps {
@@ -78,11 +104,13 @@ export function DiceArena({
 }: DiceArenaProps) {
   useExtend({ Container, Graphics, Text });
   const { hostRef, isNearViewport, stageReady } = useArenaVisibility();
+  const qualityProfile = useArenaQuality({ active: isNearViewport });
   const previousRollingRef = useRef(rolling);
 
   useEffect(() => {
     if (rolling && !previousRollingRef.current) {
       playGameSfx("dice-roll");
+      playGameSfx("anticipation-rise", { intensity: 0.92 });
     }
     if (!rolling && previousRollingRef.current && outcome) {
       playGameSfx(outcome === "win" ? "dice-win" : "dice-loss");
@@ -112,6 +140,7 @@ export function DiceArena({
               threshold={thresholdClamped}
               direction={direction}
               outcome={outcome}
+              qualityTier={qualityProfile.tier}
             />
           </Application>
         ) : (
@@ -140,6 +169,7 @@ interface DiceArenaSceneProps {
   threshold: number;
   direction: "over" | "under";
   outcome: "win" | "loss" | null;
+  qualityTier: ArenaQualityTier;
 }
 
 function DiceArenaScene({
@@ -149,6 +179,7 @@ function DiceArenaScene({
   threshold,
   direction,
   outcome,
+  qualityTier,
 }: DiceArenaSceneProps) {
   const [frame, setFrame] = useState<DiceFrame>({
     rollingNumber: 50,
@@ -163,12 +194,50 @@ function DiceArenaScene({
     drift: 0,
   });
 
+  const sceneLayerRef = useRef<Container | null>(null);
+  const rewardSpriteLayerRef = useRef<Container | null>(null);
+  const rewardSpritePoolRef = useRef<RewardSpritePool | null>(null);
   const rollAccumulatorRef = useRef(0);
   const elapsedRef = useRef(0);
+  const frameCommitMsRef = useRef(0);
   const burstBoostRef = useRef(0);
   const impactBoostRef = useRef(0);
   const previousOutcomeRef = useRef<"win" | "loss" | null>(null);
   const particlePoolRef = useRef(createParticlePool(132));
+  const ringPulsePoolRef = useRef(createRingPulsePool(34));
+  const screenShakeRef = useRef(createScreenShakeState());
+  const ambientField = useMemo(
+    () =>
+      createAmbientField({
+        seed: 11941,
+        count: scaleCountByQuality(50, qualityTier, 26),
+        width: STAGE_WIDTH,
+        height: STAGE_HEIGHT,
+        colors: [0xf8fafc, 0x67e8f9, 0xfde68a, 0xfda4af],
+        radiusMin: 0.8,
+        radiusMax: 3.6,
+      }),
+    [qualityTier],
+  );
+
+  useEffect(() => {
+    const layer = rewardSpriteLayerRef.current;
+    if (!layer) {
+      return;
+    }
+    const pool = createRewardSpritePool(
+      layer,
+      scaleCountByQuality(42, qualityTier, 24),
+      ["coin", "diamond", "shard"],
+    );
+    rewardSpritePoolRef.current = pool;
+    return () => {
+      destroyRewardSpritePool(pool);
+      if (rewardSpritePoolRef.current === pool) {
+        rewardSpritePoolRef.current = null;
+      }
+    };
+  }, [qualityTier]);
 
   const sparks = useMemo<Spark[]>(
     () =>
@@ -190,7 +259,7 @@ function DiceArenaScene({
       emitParticleBurst(particlePoolRef.current, {
         x: DIE_CENTER_X,
         y: DIE_CENTER_Y,
-        count: outcome === "win" ? 40 : 24,
+        count: scaleCountByQuality(outcome === "win" ? 40 : 24, qualityTier, 12),
         colors:
           outcome === "win"
             ? [0x86efac, 0xfef08a, 0xf8fafc]
@@ -203,6 +272,35 @@ function DiceArenaScene({
         lifeMaxMs: 880,
         gravity: 0.09,
       });
+      emitRingPulseBurst(ringPulsePoolRef.current, {
+        x: DIE_CENTER_X,
+        y: DIE_CENTER_Y,
+        count: scaleCountByQuality(outcome === "win" ? 6 : 4, qualityTier, 2),
+        colors:
+          outcome === "win"
+            ? [0x86efac, 0xfef08a, 0x67e8f9]
+            : [0xfda4af, 0xfecaca, 0xfde68a],
+        radiusMin: 36,
+        radiusMax: 110,
+        lifeMinMs: 280,
+        lifeMaxMs: 780,
+      });
+      if (rewardSpritePoolRef.current) {
+        emitRewardSpriteBurst(rewardSpritePoolRef.current, {
+          x: DIE_CENTER_X,
+          y: DIE_CENTER_Y,
+          count: scaleCountByQuality(outcome === "win" ? 22 : 12, qualityTier, 7),
+          speedMin: 2.3,
+          speedMax: outcome === "win" ? 9.8 : 7.1,
+          textureIds: outcome === "win" ? ["coin", "diamond"] : ["diamond", "shard"],
+          gravity: 0.11,
+        });
+      }
+      addScreenShakeTrauma(screenShakeRef.current, outcome === "win" ? 0.66 : 0.48);
+      playGameSfx("impact-hit", { intensity: outcome === "win" ? 1.1 : 0.9 });
+      if (outcome === "win") {
+        playGameSfx("reward-burst", { intensity: 1.14 });
+      }
     }
 
     if (rolling) {
@@ -210,7 +308,7 @@ function DiceArenaScene({
     } else {
       previousOutcomeRef.current = outcome;
     }
-  }, [outcome, rolling]);
+  }, [outcome, qualityTier, rolling]);
 
   useTick((ticker) => {
     if (!animate) {
@@ -220,6 +318,25 @@ function DiceArenaScene({
     elapsedRef.current += deltaMs;
     rollAccumulatorRef.current += deltaMs;
     updateParticlePool(particlePoolRef.current, deltaMs);
+    updateRingPulsePool(ringPulsePoolRef.current, deltaMs);
+    if (rewardSpritePoolRef.current) {
+      updateRewardSpritePool(rewardSpritePoolRef.current, deltaMs);
+    }
+    updateScreenShake(screenShakeRef.current, deltaMs);
+    if (sceneLayerRef.current) {
+      sceneLayerRef.current.position.set(
+        screenShakeRef.current.x,
+        screenShakeRef.current.y,
+      );
+    }
+    frameCommitMsRef.current += deltaMs;
+    const commitIntervalMs =
+      qualityTier === "high" ? 16 : qualityTier === "medium" ? 22 : 32;
+    if (frameCommitMsRef.current < commitIntervalMs) {
+      return;
+    }
+    const commitDelta = frameCommitMsRef.current;
+    frameCommitMsRef.current = 0;
 
     setFrame((previous) => {
       const time = elapsedRef.current / 1000;
@@ -232,7 +349,7 @@ function DiceArenaScene({
       let shakeY = previous.shakeY;
       let burst = previous.burst;
       let impactFlash = previous.impactFlash;
-      const drift = previous.drift + deltaMs * 0.0028;
+      const drift = previous.drift + commitDelta * 0.0028;
 
       if (rolling && rollAccumulatorRef.current >= 44) {
         rollAccumulatorRef.current = 0;
@@ -323,6 +440,17 @@ function DiceArenaScene({
       graphics.circle(STAGE_WIDTH - 52, 62, 116);
       graphics.fill();
 
+      drawLightBeams(
+        graphics,
+        frame.sparkPhase * (rolling ? 0.8 : 0.5),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+        [accent, 0x67e8f9, 0xfde68a],
+        scaleAlphaByQuality(rolling ? 1 : 0.68, qualityTier),
+      );
+      drawAmbientField(graphics, ambientField, frame.drift * 0.3, STAGE_WIDTH, STAGE_HEIGHT);
+      drawVignetteFrame(graphics, STAGE_WIDTH, STAGE_HEIGHT, 0.09 + frame.burst * 0.12);
+
       for (let index = 0; index < 22; index += 1) {
         const x = (index * 21 + frame.drift * (index % 2 === 0 ? 20 : 10)) % STAGE_WIDTH;
         const y = 18 + ((index * 17) % (STAGE_HEIGHT - 50));
@@ -334,7 +462,7 @@ function DiceArenaScene({
         graphics.fill();
       }
     },
-    [frame.drift],
+    [accent, ambientField, frame.burst, frame.drift, frame.sparkPhase, qualityTier, rolling],
   );
 
   const drawPulse = useCallback(
@@ -538,6 +666,11 @@ function DiceArenaScene({
     drawParticlePool(graphics, particlePoolRef.current);
   }, []);
 
+  const drawRingBursts = useCallback((graphics: Graphics) => {
+    graphics.clear();
+    drawRingPulsePool(graphics, ringPulsePoolRef.current);
+  }, []);
+
   const bannerText = rolling
     ? "ROLLING"
     : outcome === "win"
@@ -564,31 +697,34 @@ function DiceArenaScene({
       <pixiGraphics draw={drawBackdrop} />
       <pixiGraphics draw={drawScanner} />
       <pixiGraphics draw={drawSparkles} />
-      <pixiGraphics draw={drawPulse} />
-      <pixiGraphics draw={drawShockwave} />
-      <pixiGraphics draw={drawGauge} />
-      <pixiContainer
-        x={DIE_CENTER_X + frame.shakeX}
-        y={DIE_CENTER_Y + frame.shakeY}
-        rotation={frame.tilt + frame.spin * 0.05}
-        scale={frame.scale}
-      >
-        <pixiGraphics draw={drawTrail} />
-        <pixiGraphics draw={drawGlow} />
-        <pixiGraphics draw={drawDie} />
-        <pixiText
-          x={0}
-          y={8}
-          anchor={0.5}
-          text={String(effectiveRoll)}
-          style={{
-            fill: "#0f172a",
-            fontFamily: "Space Grotesk",
-            fontWeight: "800",
-            fontSize: 84,
-            stroke: { color: "#e2e8f0", width: 1 },
-          }}
-        />
+      <pixiGraphics draw={drawRingBursts} />
+      <pixiContainer ref={sceneLayerRef}>
+        <pixiGraphics draw={drawPulse} />
+        <pixiGraphics draw={drawShockwave} />
+        <pixiGraphics draw={drawGauge} />
+        <pixiContainer
+          x={DIE_CENTER_X + frame.shakeX}
+          y={DIE_CENTER_Y + frame.shakeY}
+          rotation={frame.tilt + frame.spin * 0.05}
+          scale={frame.scale}
+        >
+          <pixiGraphics draw={drawTrail} />
+          <pixiGraphics draw={drawGlow} />
+          <pixiGraphics draw={drawDie} />
+          <pixiText
+            x={0}
+            y={8}
+            anchor={0.5}
+            text={String(effectiveRoll)}
+            style={{
+              fill: "#0f172a",
+              fontFamily: "Space Grotesk",
+              fontWeight: "800",
+              fontSize: 84,
+              stroke: { color: "#e2e8f0", width: 1 },
+            }}
+          />
+        </pixiContainer>
       </pixiContainer>
       <pixiContainer x={DIE_CENTER_X} y={40} scale={bannerScale}>
         <pixiText
@@ -632,6 +768,7 @@ function DiceArenaScene({
           stroke: { color: "#020617", width: 1.8 },
         }}
       />
+      <pixiContainer ref={rewardSpriteLayerRef} />
       <pixiGraphics draw={drawParticles} />
       <pixiGraphics draw={drawFlash} />
     </>

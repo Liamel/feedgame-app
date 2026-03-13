@@ -75,6 +75,7 @@
   border-bottom: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(3, 8, 14, 0.86);
   backdrop-filter: blur(10px);
+  box-shadow: 0 8px 22px rgba(1, 4, 12, 0.44);
 }
 
 .audio-controls {
@@ -83,6 +84,13 @@
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.top-balance {
+  text-shadow:
+    0 0 16px rgba(74, 222, 128, 0.36),
+    0 0 2px rgba(236, 253, 245, 0.5);
+  animation: balance-pop 360ms cubic-bezier(0.19, 0.9, 0.2, 1);
 }
 
 .audio-toggle {
@@ -99,6 +107,7 @@
 
 .audio-toggle:hover {
   transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(3, 17, 30, 0.42);
 }
 
 .audio-toggle-muted {
@@ -159,11 +168,37 @@
 }
 
 .reel-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   border-color: rgba(148, 163, 184, 0.3);
   background: rgba(2, 6, 18, 0.84);
   color: #e2e8f0;
   box-shadow: 0 18px 38px rgba(1, 4, 10, 0.45);
+  transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
+}
+
+.reel-card::before {
+  content: "";
+  position: absolute;
+  inset: -140% -60%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(186, 230, 253, 0.08) 38%,
+    rgba(253, 224, 71, 0.09) 50%,
+    rgba(251, 113, 133, 0.07) 62%,
+    transparent 100%
+  );
+  transform: translateX(-36%) rotate(11deg);
+  pointer-events: none;
+  animation: reel-sheen 7.8s ease-in-out infinite;
+}
+
+.reel-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(186, 230, 253, 0.44);
+  box-shadow: 0 22px 40px rgba(1, 4, 10, 0.52);
 }
 
 .reel-card [class*="text-muted-foreground"] {
@@ -198,12 +233,14 @@
   border-color: rgba(74, 222, 128, 0.72);
   background: linear-gradient(180deg, rgba(10, 54, 38, 0.82), rgba(7, 39, 28, 0.88));
   box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.2);
+  animation: reward-glow 580ms cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
 .result-box-loss {
   border-color: rgba(251, 113, 133, 0.72);
   background: linear-gradient(180deg, rgba(73, 16, 34, 0.84), rgba(54, 13, 27, 0.9));
   box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.24);
+  animation: reward-glow 420ms cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
 .mines-hunt-shell {
@@ -359,10 +396,23 @@
 }
 
 .arena-shell {
+  position: relative;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.32);
   box-shadow: 0 14px 26px rgba(2, 6, 23, 0.42);
+}
+
+.arena-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(180px 88px at 12% 0%, rgba(186, 230, 253, 0.14), transparent 76%),
+    radial-gradient(180px 88px at 84% 0%, rgba(253, 224, 71, 0.11), transparent 78%);
 }
 
 .arena-canvas-fallback {
@@ -612,7 +662,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  animation: arena-pop 260ms ease;
+  animation: arena-pop 260ms ease, arena-pill-breathe 2.8s ease-in-out infinite;
 }
 
 .arena-pill-info {
@@ -630,18 +680,21 @@
   border-color: rgba(250, 204, 21, 0.7);
   background: rgba(88, 69, 10, 0.58);
   color: #fde68a;
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.24);
 }
 
 .arena-pill-win {
   border-color: rgba(74, 222, 128, 0.72);
   background: rgba(9, 56, 33, 0.62);
   color: #bbf7d0;
+  box-shadow: 0 0 22px rgba(74, 222, 128, 0.26);
 }
 
 .arena-pill-loss {
   border-color: rgba(251, 113, 133, 0.68);
   background: rgba(80, 18, 38, 0.62);
   color: #fecdd3;
+  box-shadow: 0 0 18px rgba(251, 113, 133, 0.2);
 }
 
 @keyframes arena-pop {
@@ -651,6 +704,66 @@
   }
   to {
     transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes arena-pill-breathe {
+  0% {
+    filter: saturate(0.98);
+  }
+  50% {
+    filter: saturate(1.08);
+  }
+  100% {
+    filter: saturate(0.98);
+  }
+}
+
+@keyframes reward-glow {
+  0% {
+    transform: scale(0.985);
+    opacity: 0.84;
+  }
+  55% {
+    transform: scale(1.01);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes reel-sheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-52%) rotate(11deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  32% {
+    opacity: 0;
+    transform: translateX(50%) rotate(11deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(50%) rotate(11deg);
+  }
+}
+
+@keyframes balance-pop {
+  0% {
+    transform: translateY(1px) scale(0.98);
+    opacity: 0.86;
+  }
+  60% {
+    transform: translateY(-1px) scale(1.03);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }

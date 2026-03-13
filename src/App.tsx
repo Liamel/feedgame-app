@@ -311,6 +311,8 @@ function App() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const audioState = useGameAudioState();
   const hoverInteractiveRef = useRef<HTMLElement | null>(null);
+  const previousVisibleBalanceRef = useRef<number | null>(null);
+  const [balancePulseKey, setBalancePulseKey] = useState(0);
 
   const parsedStartingBalance = useMemo(() => {
     const parsed = Number(startingBalance);
@@ -457,6 +459,13 @@ function App() {
   const minesCashoutPayout = minesRound ? minesRound.stake * minesLiveMultiplier : 0;
   const wheelVisualSpinning = wheelBusy && wheelResult === null;
   const minesBombCountValue = clampInt(toNumber(minesBombCount), 1, 24);
+
+  useEffect(() => {
+    if (previousVisibleBalanceRef.current !== null && previousVisibleBalanceRef.current !== visibleBalance) {
+      setBalancePulseKey((previous) => previous + 1);
+    }
+    previousVisibleBalanceRef.current = visibleBalance;
+  }, [visibleBalance]);
 
   function setMinesBombCountValue(next: number): void {
     const clamped = clampInt(next, 1, 24);
@@ -1166,7 +1175,9 @@ function App() {
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Balance</p>
-            <p className="text-lg font-semibold text-emerald-300">{currencyFormatter.format(visibleBalance)}</p>
+            <p key={balancePulseKey} className="top-balance text-lg font-semibold text-emerald-300">
+              {currencyFormatter.format(visibleBalance)}
+            </p>
             <div className="audio-controls">
               <button
                 type="button"

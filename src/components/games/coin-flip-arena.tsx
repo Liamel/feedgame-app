@@ -1,6 +1,6 @@
 import { Application, useExtend, useTick } from "@pixi/react";
 import { Container, Graphics, Text } from "pixi.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { playGameSfx } from "./shared/game-audio";
 import {
   createParticlePool,
@@ -8,6 +8,32 @@ import {
   emitParticleBurst,
   updateParticlePool,
 } from "./shared/particles";
+import {
+  addScreenShakeTrauma,
+  createAmbientField,
+  createRingPulsePool,
+  createScreenShakeState,
+  drawAmbientField,
+  drawLightBeams,
+  drawRingPulsePool,
+  drawVignetteFrame,
+  emitRingPulseBurst,
+  updateRingPulsePool,
+  updateScreenShake,
+} from "./shared/premium-vfx";
+import {
+  type ArenaQualityTier,
+  scaleAlphaByQuality,
+  scaleCountByQuality,
+  useArenaQuality,
+} from "./shared/perf-quality";
+import {
+  createRewardSpritePool,
+  destroyRewardSpritePool,
+  emitRewardSpriteBurst,
+  updateRewardSpritePool,
+  type RewardSpritePool,
+} from "./shared/reward-sprites";
 import { useArenaVisibility } from "./shared/use-arena-visibility";
 
 interface CoinFlipArenaProps {
@@ -50,11 +76,13 @@ export function CoinFlipArena({
 }: CoinFlipArenaProps) {
   useExtend({ Container, Graphics, Text });
   const { hostRef, isNearViewport, stageReady } = useArenaVisibility();
+  const qualityProfile = useArenaQuality({ active: isNearViewport });
   const previousFlippingRef = useRef(flipping);
 
   useEffect(() => {
     if (flipping && !previousFlippingRef.current) {
       playGameSfx("coin-flip");
+      playGameSfx("anticipation-rise", { intensity: 0.84 });
     }
     if (!flipping && previousFlippingRef.current && outcome) {
       playGameSfx(outcome === "win" ? "coin-land-win" : "coin-land-loss");
@@ -87,6 +115,7 @@ export function CoinFlipArena({
               landed={landedSide}
               choice={choice}
               outcome={outcome}
+              qualityTier={qualityProfile.tier}
             />
           </Application>
         ) : (
@@ -112,6 +141,7 @@ interface CoinFlipSceneProps {
   landed: "heads" | "tails" | null;
   choice: "heads" | "tails";
   outcome: "win" | "loss" | null;
+  qualityTier: ArenaQualityTier;
 }
 
 function CoinFlipScene({
@@ -120,6 +150,7 @@ function CoinFlipScene({
   landed,
   choice,
   outcome,
+  qualityTier,
 }: CoinFlipSceneProps) {
   const [frame, setFrame] = useState<CoinFrame>({
     spin: 0,
@@ -130,8 +161,44 @@ function CoinFlipScene({
     drift: 0,
   });
   const previousFlippingRef = useRef(flipping);
+  const sceneLayerRef = useRef<Container | null>(null);
+  const rewardSpriteLayerRef = useRef<Container | null>(null);
+  const rewardSpritePoolRef = useRef<RewardSpritePool | null>(null);
   const particlePoolRef = useRef(createParticlePool(96));
+  const ringPulsePoolRef = useRef(createRingPulsePool(22));
+  const screenShakeRef = useRef(createScreenShakeState());
   const impactBoostRef = useRef(0);
+  const frameCommitMsRef = useRef(0);
+  const ambientField = useMemo(
+    () =>
+      createAmbientField({
+        seed: 4099,
+        count: scaleCountByQuality(36, qualityTier, 20),
+        width: STAGE_WIDTH,
+        height: STAGE_HEIGHT,
+        colors: [0xf8fafc, 0xfde68a, 0x93c5fd, 0xfca5a5],
+      }),
+    [qualityTier],
+  );
+
+  useEffect(() => {
+    const layer = rewardSpriteLayerRef.current;
+    if (!layer) {
+      return;
+    }
+    const pool = createRewardSpritePool(
+      layer,
+      scaleCountByQuality(34, qualityTier, 18),
+      ["coin", "diamond", "shard"],
+    );
+    rewardSpritePoolRef.current = pool;
+    return () => {
+      destroyRewardSpritePool(pool);
+      if (rewardSpritePoolRef.current === pool) {
+        rewardSpritePoolRef.current = null;
+      }
+    };
+  }, [qualityTier]);
 
   useEffect(() => {
     if (previousFlippingRef.current && !flipping && landed) {
@@ -140,7 +207,7 @@ function CoinFlipScene({
       emitParticleBurst(particlePoolRef.current, {
         x: STAGE_WIDTH / 2,
         y: 100,
-        count: outcome === "win" ? 26 : 18,
+        count: scaleCountByQuality(outcome === "win" ? 26 : 18, qualityTier, 12),
         colors: [burstColor, 0xf8fafc, 0x93c5fd],
         speedMin: 2.8,
         speedMax: outcome === "win" ? 10.5 : 8.4,
@@ -150,13 +217,40 @@ function CoinFlipScene({
         radiusMax: 4.2,
         gravity: 0.09,
       });
+      emitRingPulseBurst(ringPulsePoolRef.current, {
+        x: STAGE_WIDTH / 2,
+        y: 100,
+        count: scaleCountByQuality(outcome === "win" ? 4 : 2, qualityTier, 2),
+        colors:
+          outcome === "win"
+            ? [0x86efac, 0xfef08a, 0x38bdf8]
+            : [0xfda4af, 0xfca5a5, 0x93c5fd],
+        radiusMin: 34,
+        radiusMax: 62,
+        lifeMinMs: 280,
+        lifeMaxMs: 620,
+      });
+      if (rewardSpritePoolRef.current) {
+        emitRewardSpriteBurst(rewardSpritePoolRef.current, {
+          x: STAGE_WIDTH / 2,
+          y: 100,
+          count: scaleCountByQuality(outcome === "win" ? 14 : 8, qualityTier, 5),
+          speedMin: 1.8,
+          speedMax: outcome === "win" ? 8.4 : 6.2,
+          gravity: 0.1,
+          textureIds: outcome === "win" ? ["coin", "diamond"] : ["diamond", "shard"],
+        });
+      }
       impactBoostRef.current = 1;
+      addScreenShakeTrauma(screenShakeRef.current, outcome === "win" ? 0.62 : 0.44);
+      playGameSfx("impact-hit", { intensity: outcome === "win" ? 1.05 : 0.86 });
       if (outcome === "win") {
+        playGameSfx("reward-burst", { intensity: 1.05 });
         playGameSfx("reward-pop", { intensity: 1.08 });
       }
     }
     previousFlippingRef.current = flipping;
-  }, [flipping, landed, outcome]);
+  }, [flipping, landed, outcome, qualityTier]);
 
   useTick((ticker) => {
     if (!animate) {
@@ -164,6 +258,25 @@ function CoinFlipScene({
     }
     const delta = ticker.deltaMS;
     updateParticlePool(particlePoolRef.current, delta);
+    updateRingPulsePool(ringPulsePoolRef.current, delta);
+    if (rewardSpritePoolRef.current) {
+      updateRewardSpritePool(rewardSpritePoolRef.current, delta);
+    }
+    updateScreenShake(screenShakeRef.current, delta);
+    if (sceneLayerRef.current) {
+      sceneLayerRef.current.position.set(
+        screenShakeRef.current.x,
+        screenShakeRef.current.y,
+      );
+    }
+    frameCommitMsRef.current += delta;
+    const commitIntervalMs =
+      qualityTier === "high" ? 16 : qualityTier === "medium" ? 22 : 32;
+    if (frameCommitMsRef.current < commitIntervalMs) {
+      return;
+    }
+    const commitDelta = frameCommitMsRef.current;
+    frameCommitMsRef.current = 0;
     setFrame((previous) => {
       let spin = previous.spin;
       let bob = previous.bob;
@@ -182,8 +295,8 @@ function CoinFlipScene({
       if (flipping) {
         spin += 0.5 + Math.sin(glow * 0.14) * 0.05;
         bob = Math.sin(glow * 0.25) * 8;
-        glow += delta * 0.08;
-        drift += delta * 0.006;
+        glow += commitDelta * 0.08;
+        drift += commitDelta * 0.006;
         impact = Math.max(impact * 0.88, 0.2);
       } else {
         if (landed) {
@@ -197,8 +310,8 @@ function CoinFlipScene({
           spin += 0.024;
         }
         bob += (0 - bob) * 0.16;
-        glow += delta * 0.02;
-        drift += delta * 0.0024;
+        glow += commitDelta * 0.02;
+        drift += commitDelta * 0.0024;
         impact = Math.max(0, impact - 0.06);
       }
 
@@ -240,6 +353,17 @@ function CoinFlipScene({
       graphics.circle(STAGE_WIDTH - 56, 42, 92);
       graphics.fill();
 
+      drawLightBeams(
+        graphics,
+        frame.glow * (flipping ? 1.4 : 0.9),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+        [accent, 0x93c5fd, 0xfde68a],
+        scaleAlphaByQuality(flipping ? 1 : 0.72, qualityTier),
+      );
+      drawAmbientField(graphics, ambientField, frame.drift * 0.24, STAGE_WIDTH, STAGE_HEIGHT);
+      drawVignetteFrame(graphics, STAGE_WIDTH, STAGE_HEIGHT, 0.08 + frame.impact * 0.08);
+
       for (let index = 0; index < 20; index += 1) {
         const x =
           (index * 23 + (frame.drift * (index % 3 === 0 ? 36 : 14))) %
@@ -253,7 +377,7 @@ function CoinFlipScene({
         graphics.fill();
       }
     },
-    [frame.drift],
+    [accent, ambientField, flipping, frame.drift, frame.glow, frame.impact, qualityTier],
   );
 
   const drawOrbit = useCallback(
@@ -335,6 +459,11 @@ function CoinFlipScene({
     [accent, flipping, frame.bob, frame.glow, frame.impact],
   );
 
+  const drawRingBursts = useCallback((graphics: Graphics) => {
+    graphics.clear();
+    drawRingPulsePool(graphics, ringPulsePoolRef.current);
+  }, []);
+
   const drawParticles = useCallback((graphics: Graphics) => {
     graphics.clear();
     drawParticlePool(graphics, particlePoolRef.current);
@@ -343,30 +472,35 @@ function CoinFlipScene({
   return (
     <>
       <pixiGraphics draw={drawBackdrop} />
-      <pixiGraphics draw={drawCoinShadow} />
-      <pixiGraphics draw={drawPulse} />
-      <pixiContainer x={STAGE_WIDTH / 2} y={96 + frame.bob}>
-        <pixiGraphics draw={drawOrbit} />
+      <pixiGraphics draw={drawRingBursts} />
+      <pixiContainer ref={sceneLayerRef}>
+        <pixiGraphics draw={drawCoinShadow} />
+        <pixiGraphics draw={drawPulse} />
+        <pixiContainer x={STAGE_WIDTH / 2} y={96 + frame.bob}>
+          <pixiGraphics draw={drawOrbit} />
+        </pixiContainer>
+        <pixiContainer
+          x={STAGE_WIDTH / 2}
+          y={100 + frame.bob}
+          scale={{ x: frame.flatten, y: 1 + frame.impact * 0.03 }}
+        >
+          <pixiGraphics draw={drawCoinCore} />
+        </pixiContainer>
+        <pixiText
+          x={STAGE_WIDTH / 2}
+          y={104 + frame.bob}
+          anchor={0.5}
+          text={visibleSide === "heads" ? "H" : "T"}
+          style={{
+            fill: "#0f172a",
+            fontFamily: "Space Grotesk",
+            fontWeight: "800",
+            fontSize: 52 + frame.impact * 8,
+            stroke: { color: "#f8fafc", width: 1.4 + frame.impact * 0.6 },
+          }}
+        />
       </pixiContainer>
-      <pixiContainer
-        x={STAGE_WIDTH / 2}
-        y={100 + frame.bob}
-        scale={{ x: frame.flatten, y: 1 + frame.impact * 0.03 }}
-      >
-        <pixiGraphics draw={drawCoinCore} />
-      </pixiContainer>
-      <pixiText
-        x={STAGE_WIDTH / 2}
-        y={104 + frame.bob}
-        anchor={0.5}
-        text={visibleSide === "heads" ? "H" : "T"}
-        style={{
-          fill: "#0f172a",
-          fontFamily: "Space Grotesk",
-          fontWeight: "800",
-          fontSize: 52 + frame.impact * 8,
-        }}
-      />
+      <pixiContainer ref={rewardSpriteLayerRef} />
       <pixiGraphics draw={drawParticles} />
     </>
   );

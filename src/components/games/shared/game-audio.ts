@@ -7,6 +7,9 @@ type WebkitAudioWindow = Window & {
 export type GameSfxId =
   | "ui-hover"
   | "ui-click"
+  | "anticipation-rise"
+  | "impact-hit"
+  | "reward-burst"
   | "coin-flip"
   | "coin-land-win"
   | "coin-land-loss"
@@ -51,6 +54,9 @@ const DEFAULT_AUDIO_STATE: GameAudioState = {
 const DEFAULT_COOLDOWN_MS: Record<GameSfxId, number> = {
   "ui-hover": 120,
   "ui-click": 60,
+  "anticipation-rise": 180,
+  "impact-hit": 110,
+  "reward-burst": 200,
   "coin-flip": 120,
   "coin-land-win": 200,
   "coin-land-loss": 200,
@@ -71,6 +77,7 @@ const audioListeners = new Set<() => void>();
 const sfxLastPlayedAt = new Map<GameSfxId, number>();
 let audioContext: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let dynamicsBus: DynamicsCompressorNode | null = null;
 let state: GameAudioState = readStateFromStorage();
 
 function clamp(value: number, min: number, max: number): number {
@@ -154,7 +161,16 @@ function ensureAudioContext(): AudioContext | null {
 
   if (!masterGain) {
     masterGain = audioContext.createGain();
-    masterGain.connect(audioContext.destination);
+  }
+
+  if (!dynamicsBus) {
+    dynamicsBus = audioContext.createDynamicsCompressor();
+    dynamicsBus.threshold.setValueAtTime(-18, audioContext.currentTime);
+    dynamicsBus.knee.setValueAtTime(16, audioContext.currentTime);
+    dynamicsBus.ratio.setValueAtTime(4, audioContext.currentTime);
+    dynamicsBus.attack.setValueAtTime(0.01, audioContext.currentTime);
+    dynamicsBus.release.setValueAtTime(0.14, audioContext.currentTime);
+    masterGain.connect(dynamicsBus).connect(audioContext.destination);
   }
 
   syncMasterGain();
@@ -174,16 +190,28 @@ function playTone(
   const start = now + (spec.delay ?? 0);
   const oscillator = context.createOscillator();
   const gain = context.createGain();
+  const jitter = 1 + (Math.random() - 0.5) * 0.03;
+  const panner = typeof context.createStereoPanner === "function"
+    ? context.createStereoPanner()
+    : null;
   oscillator.type = spec.type;
-  oscillator.frequency.setValueAtTime(spec.startHz, start);
-  oscillator.frequency.exponentialRampToValueAtTime(spec.endHz, start + spec.release);
+  oscillator.frequency.setValueAtTime(Math.max(20, spec.startHz * jitter), start);
+  oscillator.frequency.exponentialRampToValueAtTime(
+    Math.max(20, spec.endHz * jitter),
+    start + spec.release,
+  );
   gain.gain.setValueAtTime(0.0001, start);
   gain.gain.exponentialRampToValueAtTime(
     Math.max(0.0001, spec.gain * intensity),
     start + spec.attack,
   );
   gain.gain.exponentialRampToValueAtTime(0.0001, start + spec.release);
-  oscillator.connect(gain).connect(output);
+  if (panner) {
+    panner.pan.value = (Math.random() - 0.5) * 0.22;
+    oscillator.connect(gain).connect(panner).connect(output);
+  } else {
+    oscillator.connect(gain).connect(output);
+  }
   oscillator.start(start);
   oscillator.stop(start + spec.release + 0.02);
 }
@@ -245,6 +273,55 @@ function runSfxGraph(
         attack: 0.01,
         release: 0.12,
         gain: 0.055,
+      }, intensity);
+      break;
+    case "anticipation-rise":
+      playTone(context, output, now, {
+        type: "sawtooth",
+        startHz: 190,
+        endHz: 430,
+        attack: 0.016,
+        release: 0.24,
+        gain: 0.08,
+      }, intensity);
+      playTone(context, output, now, {
+        type: "triangle",
+        startHz: 330,
+        endHz: 620,
+        attack: 0.02,
+        release: 0.25,
+        gain: 0.05,
+        delay: 0.02,
+      }, intensity);
+      break;
+    case "impact-hit":
+      playTone(context, output, now, {
+        type: "triangle",
+        startHz: 260,
+        endHz: 118,
+        attack: 0.008,
+        release: 0.13,
+        gain: 0.09,
+      }, intensity);
+      playNoiseBurst(context, output, now, intensity * 0.65);
+      break;
+    case "reward-burst":
+      playTone(context, output, now, {
+        type: "triangle",
+        startHz: 380,
+        endHz: 940,
+        attack: 0.015,
+        release: 0.24,
+        gain: 0.13,
+      }, intensity);
+      playTone(context, output, now, {
+        type: "sine",
+        startHz: 780,
+        endHz: 1320,
+        attack: 0.014,
+        release: 0.22,
+        gain: 0.09,
+        delay: 0.038,
       }, intensity);
       break;
     case "coin-flip":
