@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CardPeekerArena } from "@/components/games/card-peeker-arena";
 import { CoinFlipArena } from "@/components/games/coin-flip-arena";
 import { DiceArena } from "@/components/games/dice-arena";
+import { WheelArena } from "@/components/games/wheel-arena";
 import {
   Card,
   CardContent,
@@ -38,6 +39,7 @@ import {
   listPlayerRounds,
   settleRound,
   startRound,
+  type GameId,
   type RoundHistoryItem,
   type SessionTokenResponse,
   verifyRound,
@@ -55,7 +57,28 @@ const STAKE_LIMITS = {
   coin_flip: { min: 0.1, max: 500 },
   dice_over_under: { min: 0.1, max: 500 },
   higher_lower: { min: 0.1, max: 150 },
+  wheel: { min: 0.1, max: 250 },
+  mines: { min: 0.1, max: 100 },
 } as const;
+const WHEEL_SEGMENTS = [
+  { weight: 40, multiplier: 0, label: "LOSE" },
+  { weight: 25, multiplier: 1.1, label: "1.1x" },
+  { weight: 15, multiplier: 1.4, label: "1.4x" },
+  { weight: 12, multiplier: 1.8, label: "1.8x" },
+  { weight: 6, multiplier: 2.5, label: "2.5x" },
+  { weight: 2, multiplier: 5, label: "5.0x" },
+] as const;
+const WHEEL_TOTAL_WEIGHT = WHEEL_SEGMENTS.reduce((sum, segment) => sum + segment.weight, 0);
+const WHEEL_WIN_CHANCE =
+  WHEEL_SEGMENTS.filter((segment) => segment.multiplier > 0).reduce(
+    (sum, segment) => sum + segment.weight,
+    0,
+  ) / WHEEL_TOTAL_WEIGHT;
+const WHEEL_EXPECTED_MULTIPLIER =
+  WHEEL_SEGMENTS.reduce((sum, segment) => sum + (segment.weight / WHEEL_TOTAL_WEIGHT) * segment.multiplier, 0);
+const WHEEL_MAX_MULTIPLIER = Math.max(...WHEEL_SEGMENTS.map((segment) => segment.multiplier));
+const MINES_TOTAL_TILES = 25;
+const MINES_HOUSE_EDGE = 0.05;
 
 interface CoinRoundResult {
   roundId: string;
@@ -86,10 +109,42 @@ interface HigherLowerRoundResult {
   multiplier: number;
 }
 
+interface WheelRoundResult {
+  roundId: string;
+  segmentIndex: number;
+  label: string;
+  outcome: "win" | "loss";
+  payout: number;
+  multiplier: number;
+}
+
+interface MinesRoundState {
+  roundId: string;
+  stake: number;
+  totalTiles: number;
+  bombCount: number;
+  revealed: number[];
+  currentMultiplier: number;
+  ended: boolean;
+  explodedAt: number | null;
+}
+
+interface MinesRoundResult {
+  roundId: string;
+  stake: number;
+  bombCount: number;
+  revealed: number[];
+  bombs: number[];
+  explodedAt: number | null;
+  outcome: "win" | "loss";
+  payout: number;
+  multiplier: number;
+}
+
 interface ActivityEntry {
   id: string;
   title: string;
-  gameId: "coin_flip" | "dice_over_under" | "higher_lower";
+  gameId: GameId;
   outcome: "win" | "loss";
   payout: number;
   balance: number;
@@ -117,6 +172,76 @@ function toNumber(value: string): number {
 
 function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function toIndexes(value: unknown, maxExclusive: number): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const unique = new Set<number>();
+  for (const entry of value) {
+    const parsed = Number(entry);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed < maxExclusive) {
+      unique.add(parsed);
+    }
+  }
+  return [...unique.values()].sort((a, b) => a - b);
+}
+
+function combination(n: number, k: number): number {
+  if (k < 0 || k > n) {
+    return 0;
+  }
+  const m = Math.min(k, n - k);
+  if (m === 0) {
+    return 1;
+  }
+
+  let result = 1;
+  for (let i = 1; i <= m; i += 1) {
+    result = (result * (n - m + i)) / i;
+  }
+  return result;
+}
+
+function minesProjectedMultiplier(revealedCount: number, bombCount: number): number {
+  if (revealedCount <= 0) {
+    return 1;
+  }
+  const numerator = combination(MINES_TOTAL_TILES, revealedCount);
+  const denominator = combination(MINES_TOTAL_TILES - bombCount, revealedCount);
+  if (denominator <= 0) {
+    return 0;
+  }
+  return (numerator / denominator) * (1 - MINES_HOUSE_EDGE);
+}
+
+function readMinesState(
+  roundId: string,
+  stake: number,
+  gameState: Record<string, unknown>,
+): MinesRoundState {
+  const totalTiles = clampInt(Number(gameState.totalTiles ?? MINES_TOTAL_TILES), 1, MINES_TOTAL_TILES);
+  const bombCount = clampInt(Number(gameState.bombCount ?? 3), 1, totalTiles - 1);
+  const revealed = toIndexes(gameState.revealed, totalTiles);
+  const currentMultiplier = Math.max(0, Number(gameState.currentMultiplier ?? 1));
+  const ended = Boolean(gameState.ended);
+  const explodedAtRaw = Number(gameState.explodedAt);
+  const explodedAt = Number.isInteger(explodedAtRaw) && explodedAtRaw >= 0 && explodedAtRaw < totalTiles
+    ? explodedAtRaw
+    : null;
+
+  return {
+    roundId,
+    stake,
+    totalTiles,
+    bombCount,
+    revealed,
+    currentMultiplier,
+    ended,
+    explodedAt,
+  };
 }
 
 function payoutFromWinProbability(winProbability: number, houseEdge: number): number {
@@ -164,6 +289,16 @@ function App() {
   const [higherLowerBusy, setHigherLowerBusy] = useState(false);
   const [higherLowerResult, setHigherLowerResult] = useState<HigherLowerRoundResult | null>(null);
 
+  const [wheelStake, setWheelStake] = useState("1");
+  const [wheelBusy, setWheelBusy] = useState(false);
+  const [wheelResult, setWheelResult] = useState<WheelRoundResult | null>(null);
+
+  const [minesStake, setMinesStake] = useState("1");
+  const [minesBombCount, setMinesBombCount] = useState("3");
+  const [minesBusy, setMinesBusy] = useState(false);
+  const [minesRound, setMinesRound] = useState<MinesRoundState | null>(null);
+  const [minesResult, setMinesResult] = useState<MinesRoundResult | null>(null);
+
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
 
   const parsedStartingBalance = useMemo(() => {
@@ -193,7 +328,7 @@ function App() {
 
   const visibleBalance = balance ?? derivedBalance;
   const connected = Boolean(session && activePlayerId);
-  const anyBusy = connecting || coinBusy || diceBusy || higherLowerBusy;
+  const anyBusy = connecting || coinBusy || diceBusy || higherLowerBusy || wheelBusy || minesBusy;
   const cardPeekerCurrentCard = higherLowerRoundId
     ? higherLowerCurrentCard
     : (higherLowerResult?.currentCard ?? null);
@@ -232,6 +367,28 @@ function App() {
       payout,
     };
   }, [diceDirection, diceStake, diceThreshold]);
+  const wheelPreview = useMemo(() => {
+    const stake = Math.max(0, toNumber(wheelStake));
+    return {
+      stake,
+      winProbability: WHEEL_WIN_CHANCE,
+      expectedMultiplier: WHEEL_EXPECTED_MULTIPLIER,
+      expectedReturn: stake * WHEEL_EXPECTED_MULTIPLIER,
+      maxMultiplier: WHEEL_MAX_MULTIPLIER,
+      maxPayout: stake * WHEEL_MAX_MULTIPLIER,
+    };
+  }, [wheelStake]);
+  const minesPreview = useMemo(() => {
+    const stake = Math.max(0, toNumber(minesStake));
+    const bombCount = clampInt(toNumber(minesBombCount), 1, 24);
+    const firstSafeMultiplier = minesProjectedMultiplier(1, bombCount);
+    return {
+      stake,
+      bombCount,
+      firstSafeMultiplier,
+      firstSafePayout: stake * firstSafeMultiplier,
+    };
+  }, [minesBombCount, minesStake]);
   const higherLowerQuote = useMemo(() => {
     if (!higherLowerRoundId || higherLowerCurrentCard === null) {
       return null;
@@ -272,6 +429,22 @@ function App() {
       ? "result-box-win"
       : "result-box-loss"
     : "result-box-neutral";
+  const wheelResultToneClass = wheelResult
+    ? wheelResult.outcome === "win"
+      ? "result-box-win"
+      : "result-box-loss"
+    : "result-box-neutral";
+  const minesResultToneClass = minesResult
+    ? minesResult.outcome === "win"
+      ? "result-box-win"
+      : "result-box-loss"
+    : "result-box-neutral";
+  const minesDisplayRevealed = minesRound ? minesRound.revealed : (minesResult?.revealed ?? []);
+  const minesDisplayBombs = minesRound ? [] : (minesResult?.bombs ?? []);
+  const minesDisplayExplodedAt = minesRound?.explodedAt ?? minesResult?.explodedAt ?? null;
+  const minesLiveMultiplier = minesRound?.currentMultiplier ?? 1;
+  const minesCashoutPayout = minesRound ? minesRound.stake * minesLiveMultiplier : 0;
+  const wheelVisualSpinning = wheelBusy && wheelResult === null;
 
   async function refreshHistory(token: string, currentPlayerId: string): Promise<RoundHistoryItem[]> {
     const rounds = await listPlayerRounds(token, currentPlayerId);
@@ -322,6 +495,9 @@ function App() {
       setHigherLowerRoundId(null);
       setHigherLowerCurrentCard(null);
       setHigherLowerGuessPreview(null);
+      setWheelResult(null);
+      setMinesRound(null);
+      setMinesResult(null);
       setActivity([]);
 
       const rounds = await refreshHistory(nextSession.token, trimmedPlayerId);
@@ -453,6 +629,199 @@ function App() {
       setError(toErrorMessage(requestError));
     } finally {
       setDiceBusy(false);
+    }
+  }
+
+  async function playWheel() {
+    if (!session || !activePlayerId) {
+      return;
+    }
+
+    const stake = toNumber(wheelStake);
+    if (stake <= 0) {
+      setError("Wheel stake must be positive.");
+      return;
+    }
+
+    setWheelBusy(true);
+    setError(null);
+    setWheelResult(null);
+
+    try {
+      const animationFloor = new Promise<void>((resolve) => {
+        window.setTimeout(() => resolve(), 900);
+      });
+
+      const start = await startRound(session.token, {
+        sessionId: session.sessionId,
+        gameId: "wheel",
+        stake,
+        clientSeed: `wheel-${crypto.randomUUID()}`,
+        idempotencyKey: createIdempotencyKey("wheel-start"),
+      });
+
+      const settlePromise = settleRound(session.token, start.roundId, {
+        idempotencyKey: createIdempotencyKey("wheel-settle"),
+      });
+      const [settle] = await Promise.all([settlePromise, animationFloor]);
+
+      const segmentIndex = clampInt(Number(start.gameState.segmentIndex ?? 0), 0, WHEEL_SEGMENTS.length - 1);
+      const label =
+        typeof start.gameState.label === "string"
+          ? start.gameState.label
+          : WHEEL_SEGMENTS[segmentIndex]?.label ?? "UNKNOWN";
+
+      setWheelResult({
+        roundId: start.roundId,
+        segmentIndex,
+        label,
+        outcome: settle.outcome,
+        payout: settle.payout,
+        multiplier: settle.multiplier,
+      });
+      setBalance(settle.balance);
+      pushActivity({
+        title: `Wheel: ${label}`,
+        gameId: "wheel",
+        outcome: settle.outcome,
+        payout: settle.payout,
+        balance: settle.balance,
+      });
+      await refreshHistory(session.token, activePlayerId);
+    } catch (requestError) {
+      setError(toErrorMessage(requestError));
+    } finally {
+      setWheelBusy(false);
+    }
+  }
+
+  async function settleMinesRound(round: MinesRoundState, settleAction?: "cashout") {
+    if (!session || !activePlayerId) {
+      return;
+    }
+
+    const settle = await settleRound(session.token, round.roundId, {
+      idempotencyKey: createIdempotencyKey("mines-settle"),
+      ...(settleAction ? { settleAction } : {}),
+    });
+
+    const verify = await verifyRound(session.token, round.roundId);
+    const verifiedState =
+      (verify.reproducibleResult.gameState as Record<string, unknown> | undefined) ?? {};
+    const totalTiles = clampInt(Number(verifiedState.totalTiles ?? round.totalTiles), 1, MINES_TOTAL_TILES);
+    const bombCount = clampInt(Number(verifiedState.bombCount ?? round.bombCount), 1, totalTiles - 1);
+    const revealed = toIndexes(verifiedState.revealed, totalTiles);
+    const bombs = toIndexes(verifiedState.bombs, totalTiles);
+    const explodedAtRaw = Number(verifiedState.explodedAt);
+    const explodedAt =
+      Number.isInteger(explodedAtRaw) && explodedAtRaw >= 0 && explodedAtRaw < totalTiles
+        ? explodedAtRaw
+        : null;
+
+    setMinesResult({
+      roundId: round.roundId,
+      stake: round.stake,
+      bombCount,
+      revealed,
+      bombs,
+      explodedAt,
+      outcome: settle.outcome,
+      payout: settle.payout,
+      multiplier: settle.multiplier,
+    });
+    setMinesRound(null);
+    setBalance(settle.balance);
+    pushActivity({
+      title: `Mines: ${settle.outcome.toUpperCase()} (${revealed.length} picks, ${bombCount} bombs)`,
+      gameId: "mines",
+      outcome: settle.outcome,
+      payout: settle.payout,
+      balance: settle.balance,
+    });
+    await refreshHistory(session.token, activePlayerId);
+  }
+
+  async function startMinesRound() {
+    if (!session) {
+      return;
+    }
+
+    const stake = toNumber(minesStake);
+    if (stake <= 0) {
+      setError("Mines stake must be positive.");
+      return;
+    }
+
+    const bombCount = clampInt(toNumber(minesBombCount), 1, 24);
+    setMinesBombCount(String(bombCount));
+    setMinesBusy(true);
+    setError(null);
+    setMinesRound(null);
+    setMinesResult(null);
+
+    try {
+      const start = await startRound(session.token, {
+        sessionId: session.sessionId,
+        gameId: "mines",
+        stake,
+        clientSeed: `mines-${crypto.randomUUID()}`,
+        idempotencyKey: createIdempotencyKey("mines-start"),
+        gameInput: { bombCount },
+      });
+
+      setMinesRound(readMinesState(start.roundId, stake, start.gameState));
+    } catch (requestError) {
+      setError(toErrorMessage(requestError));
+    } finally {
+      setMinesBusy(false);
+    }
+  }
+
+  async function revealMinesTile(tile: number) {
+    if (!session || !minesRound || minesBusy || minesRound.ended) {
+      return;
+    }
+    if (minesRound.revealed.includes(tile)) {
+      return;
+    }
+
+    setMinesBusy(true);
+    setError(null);
+
+    try {
+      const action = await actionRound(session.token, minesRound.roundId, {
+        idempotencyKey: createIdempotencyKey("mines-reveal"),
+        action: "reveal",
+        payload: { tile },
+      });
+
+      const nextState = readMinesState(minesRound.roundId, minesRound.stake, action.gameState);
+      setMinesRound(nextState);
+
+      if (action.readyToSettle || nextState.ended) {
+        await settleMinesRound(nextState);
+      }
+    } catch (requestError) {
+      setError(toErrorMessage(requestError));
+    } finally {
+      setMinesBusy(false);
+    }
+  }
+
+  async function cashoutMinesRound() {
+    if (!minesRound || !session || minesBusy) {
+      return;
+    }
+
+    setMinesBusy(true);
+    setError(null);
+
+    try {
+      await settleMinesRound(minesRound, "cashout");
+    } catch (requestError) {
+      setError(toErrorMessage(requestError));
+    } finally {
+      setMinesBusy(false);
     }
   }
 
@@ -876,6 +1245,192 @@ function App() {
                     "Roll Dice"
                   )}
                 </Button>
+              </CardContent>
+            </Card>
+          </section>
+
+          <section className="feed-slide reel-wheel">
+            <Card className="reel-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="size-4 text-rose-300" />
+                  Lucky Wheel
+                </CardTitle>
+                <CardDescription>Single spin against weighted segments.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <WheelArena
+                  spinning={wheelVisualSpinning}
+                  segmentIndex={wheelResult?.segmentIndex ?? null}
+                  label={wheelResult?.label ?? null}
+                  outcome={wheelResult?.outcome ?? null}
+                  multiplier={wheelResult?.multiplier ?? null}
+                  payout={wheelResult?.payout ?? null}
+                />
+                <BetControls
+                  value={wheelStake}
+                  onValueChange={(value) => {
+                    setWheelStake(value);
+                    setWheelResult(null);
+                  }}
+                  min={STAKE_LIMITS.wheel.min}
+                  max={STAKE_LIMITS.wheel.max}
+                  step={0.1}
+                  quickBets={QUICK_BETS}
+                  currency={currency}
+                  disabled={wheelBusy || anyBusy}
+                />
+                <div className={`result-box ${wheelResultToneClass}`}>
+                  <p>
+                    Max win: {wheelPreview.maxMultiplier.toFixed(1)}x |{" "}
+                    {currencyFormatter.format(wheelPreview.maxPayout)}
+                  </p>
+                  <p>
+                    Win chance: {(wheelPreview.winProbability * 100).toFixed(2)}% | RTP:{" "}
+                    {(wheelPreview.expectedMultiplier * 100).toFixed(2)}%
+                  </p>
+                  {wheelResult ? (
+                    <p>
+                      <strong>{wheelResult.outcome.toUpperCase()}</strong> | segment {wheelResult.label} | payout{" "}
+                      {currencyFormatter.format(wheelResult.payout)}
+                    </p>
+                  ) : null}
+                </div>
+                <Button onClick={playWheel} disabled={wheelBusy || anyBusy}>
+                  {wheelBusy ? (
+                    <>
+                      <LoaderCircle className="size-4 animate-spin" />
+                      Spinning...
+                    </>
+                  ) : (
+                    "Spin Wheel"
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </section>
+
+          <section className="feed-slide reel-mines">
+            <Card className="reel-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Dice1 className="size-4 text-emerald-300" />
+                  Mines
+                </CardTitle>
+                <CardDescription>Reveal safe tiles, then cash out before a bomb.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <BetControls
+                  value={minesStake}
+                  onValueChange={(value) => {
+                    setMinesStake(value);
+                    setMinesResult(null);
+                  }}
+                  min={STAKE_LIMITS.mines.min}
+                  max={STAKE_LIMITS.mines.max}
+                  step={0.1}
+                  quickBets={QUICK_BETS}
+                  currency={currency}
+                  disabled={minesBusy || anyBusy || minesRound !== null}
+                />
+                <div className="grid gap-1.5">
+                  <label className="text-sm text-muted-foreground">Bombs (1-24)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={24}
+                    step="1"
+                    value={minesBombCount}
+                    onChange={(event) => {
+                      setMinesBombCount(event.target.value);
+                      setMinesResult(null);
+                    }}
+                    disabled={minesBusy || anyBusy || minesRound !== null}
+                  />
+                </div>
+                <div className={`result-box ${minesResultToneClass}`}>
+                  {minesRound ? (
+                    <>
+                      <p>
+                        Live round: {minesRound.revealed.length}/{minesRound.totalTiles - minesRound.bombCount} safe
+                        picks | bombs {minesRound.bombCount}
+                      </p>
+                      <p>
+                        Current cashout: {minesLiveMultiplier.toFixed(3)}x |{" "}
+                        {currencyFormatter.format(minesCashoutPayout)}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        First safe pick: {minesPreview.firstSafeMultiplier.toFixed(3)}x |{" "}
+                        {currencyFormatter.format(minesPreview.firstSafePayout)}
+                      </p>
+                      <p>Bombs: {minesPreview.bombCount} | House edge: {(MINES_HOUSE_EDGE * 100).toFixed(2)}%</p>
+                    </>
+                  )}
+                  {minesResult ? (
+                    <p>
+                      <strong>{minesResult.outcome.toUpperCase()}</strong> | {minesResult.revealed.length} picks | payout{" "}
+                      {currencyFormatter.format(minesResult.payout)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="mines-grid">
+                  {Array.from({ length: MINES_TOTAL_TILES }, (_, tile) => {
+                    const revealed = minesDisplayRevealed.includes(tile);
+                    const bomb = minesDisplayBombs.includes(tile);
+                    const exploded = minesDisplayExplodedAt === tile;
+                    const disabled = !minesRound || minesBusy || anyBusy || revealed;
+                    const tileClass = exploded
+                      ? "mines-tile mines-tile-exploded"
+                      : bomb
+                        ? "mines-tile mines-tile-bomb"
+                        : revealed
+                          ? "mines-tile mines-tile-safe"
+                          : "mines-tile mines-tile-hidden";
+                    const label = exploded ? "X" : bomb ? "B" : revealed ? "S" : String(tile + 1);
+
+                    return (
+                      <button
+                        key={tile}
+                        type="button"
+                        className={tileClass}
+                        onClick={() => revealMinesTile(tile)}
+                        disabled={disabled}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!minesRound ? (
+                  <Button onClick={startMinesRound} disabled={minesBusy || anyBusy}>
+                    {minesBusy ? (
+                      <>
+                        <LoaderCircle className="size-4 animate-spin" />
+                        Starting...
+                      </>
+                    ) : (
+                      "Start Mines"
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    onClick={cashoutMinesRound}
+                    disabled={minesBusy || anyBusy || minesRound.revealed.length === 0}
+                  >
+                    {minesBusy ? (
+                      <>
+                        <LoaderCircle className="size-4 animate-spin" />
+                        Settling...
+                      </>
+                    ) : (
+                      "Cash Out"
+                    )}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </section>
